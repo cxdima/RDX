@@ -1,0 +1,30 @@
+{
+  "name": "rdx",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1",
+    "build": "tsc -b && vite build",
+    "start": "node scripts/start.mjs",
+    "check": "tsc --noEmit",
+    "test": ".venv/bin/python -m pytest -q",
+    "test:browser": "playwright test",
+    "format": "prettier --write src bridge/connection.cjs scripts/*.mjs tests/browser playwright.config.ts vite.config.ts"
+  },
+  "dependencies": {
+    "lucide-react": "^0.468.0",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0",
+    "tone": "^15.1.22"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.63.0",
+    "@types/react": "^19.2.0",
+    "@types/react-dom": "^19.2.0",
+    "@vitejs/plugin-react": "^5.1.0",
+    "prettier": "^3.9.6",
+    "typescript": "^5.9.0",
+    "vite": "^7.3.0"
+  }
+}

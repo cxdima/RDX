@@ -1,0 +1,13 @@
+.venv/
+.cache/
+node_modules/
+dist/
+__pycache__/
+.pytest_cache/
+*.pyc
+*.tsbuildinfo
+data/
+artifacts/
+.DS_Store
+.idea/
+*.iml
