@@ -55,11 +55,16 @@ def section_names(project: Project) -> dict[str, str]:
     return {s.id: s.name for s in project.sections}
 
 
+def possessive(name: str) -> str:
+    """Drums' kick, not Drums's kick."""
+    return name + ("'" if name.endswith(("s", "S")) else "'s")
+
+
 def ducking(setting: Sidechain, tracks: dict[str, str]) -> str:
-    """'ducking 12 dB under Drums' kick (pump)' — the real numbers, not a label."""
+    """'ducking 12 dB under Drums\' kick (pump)' — the real numbers, not a label."""
     shape = nearest_shape(setting.amount, setting.release, setting.curve)
     source = tracks.get(setting.source, "another track")
-    return f"ducking {abs(depth_db(setting.amount))} dB under {source}'s {setting.trigger}" + (f" ({shape})" if shape else f", back over {round(setting.release, 2)} beats")
+    return f"ducking {abs(depth_db(setting.amount))} dB under {possessive(source)} {setting.trigger}" + (f" ({shape})" if shape else f", back over {round(setting.release, 2)} beats")
 
 
 def track_changes(before: Track, after: Track, names: dict[str, str], tracks: dict[str, str] | None = None) -> list[str]:

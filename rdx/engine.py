@@ -597,7 +597,7 @@ def apply_actions(original: Project, actions: list[Action], selection: dict | No
                             track.clips.append(clip)
                         clip.notes = sorted(written, key=lambda n: (n.start, n.pitch))
                         if findings is not None:
-                            findings.append(f"{track.name} now {parts_module.RELATIONS[operation]} from {other.name} in {section.name} ({len(clip.notes)} notes).")
+                            findings.append(f"{track.name} now " + parts_module.RELATIONS[operation].format(source=other.name) + f" in {section.name} ({len(clip.notes)} notes).")
                     elif action.kind == "automation":
                         keys(p, {"parameter", "points", "operation"})
                         if p.get("operation") == "remove":

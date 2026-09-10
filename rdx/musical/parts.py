@@ -81,9 +81,9 @@ def follow(source: list[Note], length: float, *, role: str = "bass", rhythm: lis
         for note in sorted(rhythm, key=lambda n: n.start):
             root = next((r for start, span, r in changes if start <= note.start < start + span), changes[-1][2])
             pitch = place(root, low, high, previous)
-            written.append(note.model_copy(update={"id": None, "pitch": pitch}, deep=True))
+            written.append(Note(pitch=pitch, start=note.start, duration=note.duration, velocity=note.velocity))
             previous = pitch
-        return [Note(pitch=n.pitch, start=n.start, duration=n.duration, velocity=n.velocity) for n in written]
+        return written
     previous = None
     for start, span, root in changes:
         pitch = place(root, low, high, previous)
@@ -167,8 +167,14 @@ def harmonise(source: list[Note], *, degrees: int = 2, key: str = "A", scale: st
 
 def octaves(source: list[Note], *, direction: int = -1) -> list[Note]:
     """The same line doubled an octave away, dropping anything unplayable."""
-    doubled = [note.model_copy(update={"id": None}, deep=True) for note in source]
-    return [Note(pitch=n.pitch + 12 * direction, start=n.start, duration=n.duration, velocity=n.velocity) for n in doubled if 0 <= n.pitch + 12 * direction <= 127]
+    return [Note(pitch=note.pitch + 12 * direction, start=note.start, duration=note.duration, velocity=note.velocity) for note in source if 0 <= note.pitch + 12 * direction <= 127]
 
 
-RELATIONS = {"follow": "plays the roots of another part's harmony", "counter": "plays in the spaces another part leaves", "harmonise": "adds a second line a set distance away in the key", "octave": "doubles the part an octave away"}
+# Each phrase takes the source track's name, so the summary the user reads is
+# a sentence rather than a label with a name appended to it.
+RELATIONS = {
+    "follow": "plays the roots of {source}",
+    "counter": "plays in the gaps {source} leaves",
+    "harmonise": "runs a second line beside {source}",
+    "octave": "doubles {source} an octave away",
+}

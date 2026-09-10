@@ -1,26 +1,26 @@
-adapter_path: /Users/cxidma/Dev/RDX/data/models/rdx-v2
-batch_size: 1
-data: /Users/cxidma/Dev/RDX/data/training
+adapter_path: /Users/dmoiseenko/Development/RDX/data/models/rdx-v3
+batch_size: 4
+data: /Users/dmoiseenko/Development/RDX/data/training
 fine_tune_type: lora
 grad_checkpoint: true
-iters: 500
-learning_rate: 5.0e-05
+iters: 800
+learning_rate: 6.0e-05
 lora_parameters:
   dropout: 0.0
-  rank: 16
+  rank: 32
   scale: 32.0
 lr_schedule:
   arguments:
-  - 5.0e-05
-  - 500
-  - 5.0e-06
+  - 6.0e-05
+  - 800
+  - 6.0e-06
   name: cosine_decay
-  warmup: 40
+  warmup: 60
   warmup_init: 1.0e-06
 mask_prompt: true
-max_seq_length: 1536
-model: /Users/cxidma/Dev/RDX/data/models/qwen3-4b
-num_layers: 4
+max_seq_length: 2048
+model: /Users/dmoiseenko/Development/RDX/data/models/qwen3-4b
+num_layers: 16
 save_every: 100
 seed: 2026
 steps_per_eval: 100

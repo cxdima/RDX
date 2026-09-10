@@ -277,8 +277,10 @@ def analyse(stems: dict[str, np.ndarray], rate: int, tracks: dict[str, tuple[str
     elif stems:
         summed = np.zeros((length, 2), dtype=np.float64)
         for samples in stems.values():
-            audio = samples if samples.ndim > 1 else np.repeat(samples[:, None], 2, axis=1)
-            summed[: len(audio), : audio.shape[1]] += audio
+            audio = samples if samples.ndim > 1 else samples[:, None]
+            if audio.shape[1] == 1:  # a mono stem sits in the middle, not the left
+                audio = np.repeat(audio, 2, axis=1)
+            summed[: len(audio), : audio.shape[1]] += audio[:, :2]
     else:
         summed = np.zeros((1, 2), dtype=np.float64)
     energies, total = band_energy(summed, rate)
