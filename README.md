@@ -62,8 +62,15 @@ the real edit.
 ## Model
 
 The local base is `mlx-community/Qwen3-4B-Instruct-2507-4bit`, pinned to
-revision `50d427756c6b1b2fe0c0a10f67fbda1fc8e82c1b`, with a LoRA adapter trained
-on this machine.
+revision `50d427756c6b1b2fe0c0a10f67fbda1fc8e82c1b`.
+
+Adapter v2 was trained here — 500 iterations, 39 minutes, val loss 5.214 to
+0.274 — and scores **14/22** against the base model's **9/22** on the held-out
+benchmark, with unusable output collapsing from 10 cases to 1. It is **not
+activated**: it does not clear the 0.7 gate in `rdx/promote.py`, and that gate
+was left where it was rather than moved to fit the result. RDX currently runs
+the base model. To use v2 anyway, the command is in Developer Operations; to
+go back, delete `data/models/rdx-v2/approved.json`.
 
 **The model does not hold the musical knowledge.** What "warm" means, what a
 buildup is made of and what a double clap is all live in `rdx/musical/` as code
@@ -108,6 +115,47 @@ audio-to-MIDI, no sidechain compression, no native Ableton automation writing,
 no bidirectional Set synchronisation, and no perceptual mastering judgement.
 WAV rendering is in-memory, so long arrangements need more memory. There is no
 cloud service and no telemetry.
+
+## Moving RDX to another Mac
+
+**This repository has no remote. Every commit exists only on the machine it was
+made on.** Before wiping or retiring a machine, either push it somewhere or copy
+the whole folder — a fresh `git clone` from nowhere will not save you.
+
+What Git carries: all source, tests, docs and configuration. What it does not,
+because `.gitignore` excludes them: `data/` (2.1 GB of model weights, the
+adapters, your projects and recordings) and `artifacts/`.
+
+```sh
+# 1. On the old Mac — take everything, including the ignored data
+rsync -a --exclude node_modules --exclude .venv ~/Dev/RDX/ /Volumes/Drive/RDX/
+
+# 2. On the new Mac — tools first
+xcode-select --install
+/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+brew install ffmpeg node python@3.12
+
+# 3. Restore, then rebuild the two environments Git does not carry
+rsync -a /Volumes/Drive/RDX/ ~/Dev/RDX/
+cd ~/Dev/RDX
+python3.12 -m venv .venv && .venv/bin/pip install -e ".[train,dev]"
+npm install && npm run build
+
+# 4. Prove it before trusting it
+npm test && npm run test:browser
+```
+
+If `data/models/qwen3-4b` did not come across, `.venv/bin/python
+scripts/fetch_model.py` re-downloads the pinned revision. The adapters in
+`data/models/rdx-v*` cannot be re-downloaded — they were trained here — so copy
+them or plan to retrain.
+
+**A machine with more memory changes what is worth doing.** Training was shaped
+throughout by 16 GB: batch size 1, gradient checkpointing forced on, four LoRA
+layers, and a run that competed with Ableton for RAM. On more memory, raise
+`--batch-size` and `--layers` first and re-measure; the config in
+`rdx/training.py` is all command-line settings for that reason. Check the peak
+memory line in `data/training/train.log` before pushing further.
 
 ## Developer Operations
 
