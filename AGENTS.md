@@ -1,7 +1,8 @@
 # RDX — agent guide
 
-Shared instructions for any coding agent working in this repo (Claude Code reads
-this via the `CLAUDE.md` symlink; Codex reads it directly).
+Shared instructions for any coding agent working in this repo. Claude Code
+reaches this through an `@AGENTS.md` import in `CLAUDE.md`; Codex reads it
+directly. Keep project rules here so the two never drift.
 
 ## What RDX is
 
@@ -81,19 +82,33 @@ npm run format                              # prettier
 
 `RDX_DATA_DIR` isolates runtime data — always set it when testing so you never
 touch the user's real projects. `RDX_PORT` picks the first port to try.
+`RDX_ADAPTER` selects which adapter version is loaded and trained, so an active
+one is never overwritten:
+
+```sh
+RDX_ADAPTER=data/models/rdx-v2 .venv/bin/python -m rdx.training --iters 600 --layers 4 --rank 16
+RDX_ADAPTER=data/models/rdx-v2 .venv/bin/python -m rdx.evaluate --adapter
+RDX_ADAPTER=data/models/rdx-v2 .venv/bin/python -m rdx.promote
+```
 
 ## Hard rules
 
 1. **This is a 16 GB M2 Pro. Never run training and inference at the same time.**
-2. **Never overwrite the active adapter.** `data/models/rdx-v1/approved.json`
-   guards it, and `rdx/training.py` refuses to run while it exists. Configure a
-   new adapter version instead of deleting the guard.
+2. **Never overwrite the active adapter.** An `approved.json` in the adapter
+   directory guards it and `rdx/training.py` refuses to run before it parses a
+   single argument. Train a new version with `RDX_ADAPTER=data/models/rdx-vN`
+   instead of deleting the guard. Retiring an adapter means writing a
+   `superseded.json` that records the measurement which justified it — see
+   `data/models/rdx-v1/` for the shape.
 3. **Model output is data, never code.** It is parsed as JSON, validated against
    `Action`, and executed by the engine. Never `eval`, shell out, or let it
    choose a file path.
 4. **Never claim the Ableton bridge is verified.** A real Live API handshake and
    transfer has not been confirmed. It stays labelled experimental until someone
-   watches it work in Live.
+   watches it work in Live. Live is **12.4.5** — `Track.insert_device` exists
+   (12.3+, native devices only) but writing automation envelopes still does not.
+   Recheck the LOM reference before relying on any Live API, and never assume a
+   function exists because it would be convenient.
 5. **Never commit `data/` or `artifacts/`** — model weights, recordings and
    databases stay local.
 6. **No cloud inference, no telemetry.** Everything the user says, hums or

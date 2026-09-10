@@ -103,7 +103,8 @@ def drop(project: Project, section_id: str, *, intensity: float = 1.0) -> list[A
 
 def breakdown(project: Project, section_id: str, *, keep: list[str] | None = None) -> list[Action]:
     """Strip back to atmosphere: drums and bass out, space in."""
-    section_of(project, section_id)
+    section = section_of(project, section_id)
+    silent = [[0, -60], [max(section.bars * 4 - 0.01, 0.01), -60]]
     kept = {name.lower() for name in keep or ["pad", "chords"]}
     actions: list[Action] = [Action(kind="arrange", section=section_id, params={"operation": "update", "energy": 0.25})]
     for track in editable(project):
@@ -111,7 +112,7 @@ def breakdown(project: Project, section_id: str, *, keep: list[str] | None = Non
         if stays:
             actions.append(Action(kind="character", track=track.id, params={"character": "dreamy", "intensity": 0.6}))
         else:
-            actions.append(Action(kind="automation", track=track.id, section=section_id, params={"parameter": "volume_db", "points": [[0, -60], [max(section_of(project, section_id).bars * 4 - 0.01, 0.01), -60]]}))
+            actions.append(Action(kind="automation", track=track.id, section=section_id, params={"parameter": "volume_db", "points": list(silent)}))
     return actions
 
 

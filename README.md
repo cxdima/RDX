@@ -95,7 +95,11 @@ voice it was written for.
 
 The Max device was built and opened through Live, but **a real Live API
 handshake and transfer have never been confirmed**. Treat that integration as
-experimental.
+experimental. It packages correctly against Live 12.4.5.
+
+Live 12.4.5 does add `Track.insert_device`, so native Live instruments and
+effects are reachable in principle — see [RDX_PLAN.md](RDX_PLAN.md). Writing
+automation envelopes into Live is still not in the documented API.
 
 Other current limits: 4/4 only; up to 24 tracks, 16 sections, 256 bars; one clip
 per track and section; hum and rhythm analysis capped at 30 seconds; imports
