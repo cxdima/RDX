@@ -1,7 +1,13 @@
-"""Run a reproducible local adapter training job and retain the complete log."""
+"""Run a reproducible local adapter training job and retain the complete log.
+
+The adapter directory comes from RDX_ADAPTER so a new version can be trained
+while the active one stays in place and protected.
+"""
+import argparse
 import json
 import os
 import re
+import signal
 import subprocess
 import sys
 import time
@@ -9,17 +15,29 @@ import time
 from .model import ADAPTER, DATA, MODEL, ROOT
 
 
-def main():
+def main(argv: list[str] | None = None):
+    # The protection check runs before anything else, including argument
+    # parsing, so no invocation can slip past it.
     if (ADAPTER / "approved.json").exists():
-        raise RuntimeError("The active adapter is protected. Configure a new adapter version before training again.")
+        raise RuntimeError("The active adapter is protected. Set RDX_ADAPTER to a new version before training again.")
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--iters", type=int, default=600)
+    parser.add_argument("--batch-size", type=int, default=2)
+    parser.add_argument("--layers", type=int, default=8)
+    parser.add_argument("--rank", type=int, default=16)
+    parser.add_argument("--learning-rate", type=float, default=1e-4)
+    # Examples cluster near 1616 tokens; a tight cap keeps peak memory down.
+    parser.add_argument("--max-seq-length", type=int, default=1536)
+    parser.add_argument("--no-grad-checkpoint", action="store_true")
+    args = parser.parse_args(argv)
     directory = DATA / "training"
     directory.mkdir(parents=True, exist_ok=True)
-    config = {"model": str(MODEL), "train": True, "data": str(directory), "fine_tune_type": "lora", "num_layers": 4, "batch_size": 1, "iters": 120, "val_batches": 6, "learning_rate": 0.0001, "steps_per_report": 10, "steps_per_eval": 40, "adapter_path": str(ADAPTER), "save_every": 40, "max_seq_length": 2048, "grad_checkpoint": True, "mask_prompt": True, "seed": 2026, "lora_parameters": {"rank": 8, "dropout": 0.0, "scale": 16.0}}
+    config = {"model": str(MODEL), "train": True, "data": str(directory), "fine_tune_type": "lora", "num_layers": args.layers, "batch_size": args.batch_size, "iters": args.iters, "val_batches": 8, "learning_rate": args.learning_rate, "steps_per_report": 20, "steps_per_eval": 100, "adapter_path": str(ADAPTER), "save_every": 100, "max_seq_length": args.max_seq_length, "grad_checkpoint": not args.no_grad_checkpoint, "mask_prompt": True, "seed": 2026, "lora_parameters": {"rank": args.rank, "dropout": 0.0, "scale": 32.0}}
     import yaml
     config_path = directory / "train.yaml"
     config_path.write_text(yaml.safe_dump(config))
     started = time.time()
-    status = {"state": "training", "step": 0, "steps": 120, "started": started}
+    status = {"state": "training", "step": 0, "steps": args.iters, "started": started, "adapter": str(ADAPTER)}
     status_path = directory / "status.json"
 
     def save():
@@ -30,7 +48,15 @@ def main():
     save()
     environment = {**os.environ, "HF_HUB_OFFLINE": "1", "HF_HUB_DISABLE_TELEMETRY": "1", "TOKENIZERS_PARALLELISM": "false", "PYTHONUNBUFFERED": "1"}
     with (directory / "train.log").open("w") as log:
-        process = subprocess.Popen([sys.executable, "-m", "mlx_lm.lora", "--config", str(config_path)], cwd=ROOT, env=environment, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1)
+        # Its own process group, so terminating this script takes the trainer
+        # with it. An orphaned trainer holds gigabytes and starves everything.
+        process = subprocess.Popen([sys.executable, "-m", "mlx_lm.lora", "--config", str(config_path)], cwd=ROOT, env=environment, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1, start_new_session=True)
+
+        def stop(*_):
+            raise KeyboardInterrupt
+
+        for received in (signal.SIGINT, signal.SIGTERM, signal.SIGHUP):
+            signal.signal(received, stop)
         try:
             for line in process.stdout:
                 log.write(line)
@@ -43,8 +69,12 @@ def main():
                     save()
             code = process.wait()
         except BaseException:
-            process.terminate()
-            process.wait()
+            os.killpg(process.pid, signal.SIGTERM)
+            try:
+                process.wait(timeout=15)
+            except subprocess.TimeoutExpired:
+                os.killpg(process.pid, signal.SIGKILL)
+                process.wait()
             status["state"] = "interrupted"
             save()
             raise

@@ -38,8 +38,20 @@ class Section(Model):
     energy: float = Field(default=0.7, ge=0, le=1)
 
 
+# Instrument voices. Melodic tracks may use any of these except the two
+# reserved presets; "drumkit" belongs to drum tracks and "audio" to recordings.
+PRESETS = ("saw", "supersaw", "pluck", "sine", "sub", "pad", "strings", "choir", "bell", "fm", "noise", "drumkit", "audio")
+MELODIC_PRESETS = tuple(p for p in PRESETS if p not in {"drumkit", "audio"})
+
+# General-MIDI drum pitches RDX plays. src/audio/drums.ts mirrors this map and
+# tests/test_musical.py asserts the two stay identical.
+DRUM_MAP = {36: "Kick", 37: "Rim", 38: "Snare", 39: "Clap", 42: "Hat", 44: "Pedal", 46: "Open", 45: "Low tom", 47: "Mid tom", 50: "High tom", 49: "Crash", 51: "Ride"}
+
+AUTOMATION_RANGES = {"cutoff": (60, 20000), "resonance": (0.1, 15), "volume_db": (-60, 6), "pan": (-1, 1), "reverb": (0, 1), "flanger": (0, 1), "chorus": (0, 1)}
+
+
 class Sound(Model):
-    preset: Literal["saw", "pluck", "sine", "pad", "fm", "drumkit", "audio"] = "pluck"
+    preset: Literal[PRESETS] = "pluck"  # type: ignore[valid-type]
     cutoff: float = Field(default=6000, ge=60, le=20000)
     resonance: float = Field(default=1, ge=0.1, le=15)
     attack: float = Field(default=0.01, ge=0.001, le=4)
@@ -50,17 +62,24 @@ class Sound(Model):
     low: float = Field(default=0, ge=-24, le=12)
     mid: float = Field(default=0, ge=-24, le=12)
     high: float = Field(default=0, ge=-24, le=12)
+    # Motion: modulation that gives a sound movement rather than tone.
+    chorus: float = Field(default=0, ge=0, le=1)
+    flanger: float = Field(default=0, ge=0, le=1)
+    phaser: float = Field(default=0, ge=0, le=1)
+    autopan: float = Field(default=0, ge=0, le=1)
+    motion_rate: float = Field(default=0.4, ge=0.02, le=8)
+    width: float = Field(default=0, ge=0, le=1)
+    glide: float = Field(default=0, ge=0, le=0.5)
 
 
 class Automation(Model):
-    parameter: Literal["cutoff", "volume_db", "pan", "reverb"]
+    parameter: Literal["cutoff", "resonance", "volume_db", "pan", "reverb", "flanger", "chorus"]
     section_id: str
     points: list[tuple[float, float]] = Field(min_length=2, max_length=64)
 
     @model_validator(mode="after")
     def valid_points(self):
-        ranges = {"cutoff": (60, 20000), "volume_db": (-60, 6), "pan": (-1, 1), "reverb": (0, 1)}
-        low, high = ranges[self.parameter]
+        low, high = AUTOMATION_RANGES[self.parameter]
         if any(t < 0 or not low <= v <= high for t, v in self.points):
             raise ValueError("Automation point is outside the supported range")
         if any(a[0] >= b[0] for a, b in zip(self.points, self.points[1:])):
@@ -133,14 +152,22 @@ class Project(Model):
 
 
 class Action(Model):
-    kind: Literal["project", "compose", "drums", "transpose", "rhythm", "sound", "mix", "arrange", "master", "notes", "add_track", "remove_track", "duplicate_track", "protect", "automation"]
+    kind: Literal["project", "compose", "drums", "kit", "transpose", "rhythm", "sound", "character", "harmony", "move", "mix", "arrange", "master", "notes", "add_track", "remove_track", "duplicate_track", "protect", "automation"]
     track: str | None = None
     section: str | None = None
     params: dict = Field(default_factory=dict)
 
 
 class Plan(Model):
-    summary: str = Field(max_length=1200)
+    """What the model proposed.
+
+    `summary` is the model's own wording and is kept only for training records:
+    what the user sees is generated from the real change. `note` carries a
+    question or a plain "I cannot do that" when there are no actions.
+    """
+
+    summary: str = Field(default="", max_length=1200)
+    note: str = Field(default="", max_length=1200)
     actions: list[Action] = Field(default_factory=list, max_length=24)
 
 

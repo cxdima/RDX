@@ -5,11 +5,23 @@ import math
 
 from music21 import pitch, scale
 
-from .domain import Action, Automation, Clip, Master, Note, Project, Section, Sound, Track, new_track, uid
+from .domain import Action, Automation, Clip, Master, MELODIC_PRESETS, Note, Project, Section, Sound, Track, new_track, uid
+from .musical import character as character_module
+from .musical import drums as drums_module
+from .musical import harmony as harmony_module
+from .musical import moves as moves_module
 
 
 class EditError(ValueError):
     pass
+
+
+class Unsupported(EditError):
+    """The request names something RDX genuinely cannot do.
+
+    Separate from a validation failure so the model is never invited to retry
+    a request that no amount of rephrasing will satisfy.
+    """
 
 
 def keys(params: dict, allowed: set[str]):
@@ -18,37 +30,114 @@ def keys(params: dict, allowed: set[str]):
         raise EditError(f"Unsupported settings: {', '.join(sorted(unknown))}")
 
 
+NUMERIC_PARAMS = {"tempo", "seed", "density", "variation", "semitones", "start", "end", "grid", "swing", "humanize", "velocity", "cutoff", "resonance", "attack", "release", "reverb", "delay", "drive", "low", "mid", "high", "volume_db", "delta_db", "pan", "bars", "energy", "index", "ceiling", "compression", "audio_offset", "chorus", "flanger", "phaser", "autopan", "motion_rate", "width", "glide", "intensity", "span", "voices", "roll_from_bar", "octave", "cut_bars", "from_cutoff", "to_cutoff", "start_beat", "beats", "to_db"}
+BOOLEAN_PARAMS = {"locked", "last_note", "mute", "solo", "crash", "fill", "roll", "riser"}
+TEXT_PARAMS = {"name", "role", "key", "scale", "pattern", "preset", "operation", "parameter", "note_id", "character", "kit", "from_track", "track", "layer_name"}
+
+
 def parameter_types(params: dict):
-    numeric = {"tempo", "seed", "density", "variation", "semitones", "start", "end", "grid", "swing", "humanize", "velocity", "cutoff", "resonance", "attack", "release", "reverb", "delay", "drive", "low", "mid", "high", "volume_db", "delta_db", "pan", "bars", "energy", "index", "ceiling", "compression", "audio_offset"}
     for key, value in params.items():
-        if key in numeric and (type(value) not in {int, float} or not math.isfinite(value)):
+        if key in NUMERIC_PARAMS and (type(value) not in {int, float} or not math.isfinite(value)):
             raise EditError(f"{key} must be a finite number")
-        if key in {"locked", "last_note", "mute", "solo"} and type(value) is not bool:
+        if key in BOOLEAN_PARAMS and type(value) is not bool:
             raise EditError(f"{key} must be true or false")
-        if key in {"name", "role", "key", "scale", "pattern", "preset", "operation", "parameter", "note_id"} and not isinstance(value, str):
+        if key in TEXT_PARAMS and not isinstance(value, str):
             raise EditError(f"{key} must be text")
     if "notes" in params and (not isinstance(params["notes"], list) or any(not isinstance(n, dict) for n in params["notes"])):
         raise EditError("Notes must be a list of note objects")
 
 
-def target_tracks(project: Project, target: str | None) -> list[Track]:
+def validated(project: Project) -> Project:
+    """Re-check the whole project and translate any failure into plain language."""
+    try:
+        return Project.model_validate(project.model_dump())
+    except EditError:
+        raise
+    except ValueError as error:
+        message = getattr(error, "errors", None)
+        if callable(message):
+            reasons = [str(e.get("msg", "")).replace("Value error, ", "") for e in error.errors()]
+            unique = list(dict.fromkeys(r for r in reasons if r))
+            if unique:
+                raise EditError("That edit would leave the project inconsistent: " + "; ".join(unique[:3])) from error
+        raise EditError("That edit would leave the project inconsistent") from error
+
+
+# Musical starting points for each instrument, applied when the preset changes.
+# Explicit parameters in the same action still win over these.
+PRESET_DEFAULTS: dict[str, dict[str, float]] = {
+    "pluck": {"attack": 0.005, "release": 0.18, "cutoff": 6000},
+    "saw": {"attack": 0.01, "release": 0.4, "cutoff": 9000},
+    "supersaw": {"attack": 0.02, "release": 0.5, "cutoff": 11000, "chorus": 0.25, "width": 0.5},
+    "sine": {"attack": 0.01, "release": 0.35, "cutoff": 12000},
+    "sub": {"attack": 0.005, "release": 0.25, "cutoff": 400, "reverb": 0, "delay": 0, "width": 0},
+    "pad": {"attack": 0.4, "release": 1.8, "cutoff": 4500},
+    "strings": {"attack": 0.35, "release": 1.6, "cutoff": 5200, "chorus": 0.3, "width": 0.35, "reverb": 0.3},
+    "choir": {"attack": 0.5, "release": 2.2, "cutoff": 3800, "reverb": 0.4, "width": 0.4},
+    "bell": {"attack": 0.002, "release": 1.4, "cutoff": 14000},
+    "fm": {"attack": 0.008, "release": 0.5, "cutoff": 10000},
+    "noise": {"attack": 0.5, "release": 1.0, "cutoff": 2000, "reverb": 0.3},
+}
+
+# Kinds that name their own target, so the model never has to echo an id back.
+ROLE_IMPLIED_BY_KIND = {"drums": "drums", "kit": "drums"}
+
+
+def resolve_track(project: Project, target: str | None, selection: dict | None, kind: str = "") -> str | None:
+    """Fill in an omitted or 'selected' track target.
+
+    Small models are poor at copying a random id out of the context and good
+    at naming what they mean, so RDX resolves the target here instead of
+    making the model do clerical work it will get wrong.
+    """
+    if target not in (None, "", "selected"):
+        return target
+    role = ROLE_IMPLIED_BY_KIND.get(kind)
+    if role:
+        matching = [t for t in project.tracks if t.role == role]
+        if len(matching) == 1:
+            return matching[0].id
+    if selection and selection.get("track"):
+        return selection["track"]
+    return target
+
+
+def resolve_section(project: Project, target: str | None, selection: dict | None) -> str | None:
+    if target not in (None, "", "selected"):
+        return target
+    if selection and selection.get("section"):
+        return selection["section"]
+    return target
+
+
+def target_tracks(project: Project, target: str | None, selection: dict | None = None, kind: str = "") -> list[Track]:
+    target = resolve_track(project, target, selection, kind)
     if target == "all":
         return [t for t in project.tracks if not t.locked]
     found = [t for t in project.tracks if t.id == target or t.name.lower() == str(target).lower()]
     if not found:
         found = [t for t in project.tracks if t.role == target]
-    if len(found) != 1:
-        raise EditError("Select one specific track for this change")
-    return found
+    if len(found) == 1:
+        return found
+    available = ", ".join(f"{t.name} ({t.role})" for t in project.tracks)
+    if not target:
+        raise EditError(f"Say which track this is for. The project has: {available}.")
+    if not found:
+        raise EditError(f"There is no track called '{target}'. The project has: {available}.")
+    raise EditError(f"More than one track matches '{target}'. Name one of: {available}.")
 
 
-def target_sections(project: Project, target: str | None) -> list[Section]:
+def target_sections(project: Project, target: str | None, selection: dict | None = None) -> list[Section]:
+    target = resolve_section(project, target, selection)
     if target == "all":
         return project.sections
     found = [s for s in project.sections if s.id == target or s.name.lower() == str(target).lower()]
-    if len(found) != 1:
-        raise EditError("Select one specific section for this change")
-    return found
+    if len(found) == 1:
+        return found
+    available = ", ".join(s.name for s in project.sections)
+    if not target:
+        raise EditError(f"Say which section this is for. The arrangement has: {available}.")
+    raise EditError(f"There is no section called '{target}'. The arrangement has: {available}.")
 
 
 def generate_notes(project: Project, track: Track, section: Section, *, density: float = 0.6, variation: int = 0, pattern: str = "four_floor") -> list[Note]:
@@ -119,15 +208,40 @@ def starter_project() -> Project:
     return Project.model_validate(project.model_dump())
 
 
-def apply_actions(original: Project, actions: list[Action]) -> Project:
+def apply_actions(original: Project, actions: list[Action], selection: dict | None = None, findings: list[str] | None = None, _depth: int = 0) -> Project:
     project = original.model_copy(deep=True)
     originally_locked = {t.id for t in original.tracks if t.locked}
     for action in actions:
         p = action.params
         parameter_types(p)
+        if action.kind == "move":
+            keys(p, {"name", "intensity", "roll", "riser", "cut_bars", "from_cutoff", "to_cutoff", "track", "preset", "layer_name", "octave", "character", "keep", "start_beat", "beats", "to_db"})
+            if _depth:
+                raise EditError("A production move cannot contain another move")
+            name = p.get("name")
+            if name not in moves_module.MOVES:
+                raise Unsupported(f"'{name}' is not a production move RDX knows. Available: {', '.join(sorted(moves_module.MOVES))}.")
+            arguments = {k: v for k, v in p.items() if k != "name"}
+            if name == "layer":
+                arguments["track_target"] = resolve_track(project, arguments.pop("track", None) or action.track, selection, "layer")
+            else:
+                arguments["section_id"] = target_sections(project, action.section, selection)[0].id
+            try:
+                expanded = moves_module.MOVES[name](project, **arguments)
+            except TypeError as error:
+                raise EditError(f"The {name} move does not take those settings") from error
+            except EditError:
+                raise
+            except ValueError as error:
+                raise EditError(str(error)) from error
+            project = apply_actions(project, expanded, selection, findings, _depth + 1)
+            continue
         if action.kind == "project":
             keys(p, {"name", "tempo", "key", "scale", "seed"})
-            updated = Project.model_validate({**project.model_dump(), **p})
+            try:
+                updated = Project.model_validate({**project.model_dump(), **p})
+            except ValueError as error:
+                raise EditError(f"Those project settings are out of range: {', '.join(sorted(p))}") from error
             if updated.key != project.key or updated.scale != project.scale:
                 old_root, new_root = pitch.Pitch(project.key).pitchClass, pitch.Pitch(updated.key).pitchClass
                 shift = (new_root - old_root + 6) % 12 - 6
@@ -143,17 +257,24 @@ def apply_actions(original: Project, actions: list[Action]) -> Project:
                             interval = (note.pitch - old_root) % 12
                             scale_shift = new_intervals[old_intervals.index(interval)] - interval if interval in old_intervals else 0
                             note.pitch += shift + scale_shift
-            project = Project.model_validate(updated.model_dump())
+            project = validated(updated)
             continue
         if action.kind == "master":
             keys(p, set(Master.model_fields))
             project.master = Master.model_validate({**project.master.model_dump(), **p})
             continue
         if action.kind == "add_track":
-            keys(p, {"role", "name"})
+            keys(p, {"role", "name", "preset"})
             if p.get("role") not in {"drums", "bass", "chords", "lead", "pad", "audio"}:
                 raise EditError("Choose a supported track role")
-            project.tracks.append(new_track(p["role"], p.get("name")))
+            track = new_track(p["role"], p.get("name"))
+            if "preset" in p:
+                if p["preset"] not in MELODIC_PRESETS:
+                    raise Unsupported(f"There is no '{p['preset']}' instrument. Available: {', '.join(MELODIC_PRESETS)}.")
+                if p["role"] in {"drums", "audio"}:
+                    raise EditError("Drum and audio tracks do not take an instrument preset")
+                track.sound.preset = p["preset"]
+            project.tracks.append(track)
             continue
         if action.kind == "arrange":
             keys(p, {"operation", "name", "bars", "energy", "index"})
@@ -161,11 +282,14 @@ def apply_actions(original: Project, actions: list[Action]) -> Project:
             if operation == "add":
                 project.sections.append(Section(name=p.get("name", "Section"), bars=p.get("bars", 8), energy=p.get("energy", 0.7)))
                 continue
-            section = target_sections(project, action.section)
+            section = target_sections(project, action.section, selection)
             if len(section) != 1:
                 raise EditError("Choose one section")
             section = section[0]
-            if any((t.locked or t.id in originally_locked) and any(c.section_id == section.id for c in t.clips) for t in project.tracks):
+            # Only operations that would move, copy or shorten protected notes
+            # are blocked. Renaming a section or changing its energy is safe.
+            disturbs_material = operation in {"duplicate", "remove", "move"} or (operation == "update" and "bars" in p)
+            if disturbs_material and any((t.locked or t.id in originally_locked) and any(c.section_id == section.id for c in t.clips) for t in project.tracks):
                 raise EditError("This section contains protected material")
             if operation == "duplicate":
                 new = section.model_copy(deep=True)
@@ -221,7 +345,7 @@ def apply_actions(original: Project, actions: list[Action]) -> Project:
             else:
                 raise EditError("Unknown arrangement operation")
             continue
-        tracks = target_tracks(project, action.track)
+        tracks = target_tracks(project, action.track, selection, action.kind)
         for track in tracks:
             if (track.locked or track.id in originally_locked) and action.kind != "protect":
                 raise EditError(f"{track.name} is protected")
@@ -246,18 +370,38 @@ def apply_actions(original: Project, actions: list[Action]) -> Project:
                 project.tracks.append(new)
             elif action.kind == "sound":
                 keys(p, set(Sound.model_fields))
-                presets = {"pluck":{"attack":0.005,"release":0.18,"cutoff":6000}, "pad":{"attack":0.4,"release":1.8,"cutoff":4500}, "saw":{"attack":0.01,"release":0.4,"cutoff":9000}, "sine":{"attack":0.01,"release":0.35,"cutoff":12000}, "fm":{"attack":0.008,"release":0.5,"cutoff":10000}}
-                track.sound = Sound.model_validate({**track.sound.model_dump(), **presets.get(p.get("preset"), {}), **p})
+                if "preset" in p:
+                    if p["preset"] not in MELODIC_PRESETS:
+                        raise Unsupported(f"There is no '{p['preset']}' instrument. Available: {', '.join(MELODIC_PRESETS)}.")
+                    if track.role in {"drums", "audio"}:
+                        raise EditError(f"{track.name} is a {track.role} track and does not take an instrument preset")
+                try:
+                    track.sound = Sound.model_validate({**track.sound.model_dump(), **PRESET_DEFAULTS.get(p.get("preset"), {}), **p})
+                except ValueError as error:
+                    raise EditError(f"Those sound settings are out of range: {', '.join(sorted(set(p) - {'preset'}))}") from error
+            elif action.kind == "character":
+                keys(p, {"character", "intensity"})
+                word = p.get("character")
+                if not isinstance(word, str) or word.lower() not in character_module.CHARACTERS:
+                    raise Unsupported(f"RDX has no sound character called '{word}'. It knows: {', '.join(sorted(character_module.CHARACTERS))}.")
+                if track.role in {"drums", "audio"} and word.lower() in {"glide"}:
+                    raise EditError("That character only applies to instrument parts")
+                intensity = float(p.get("intensity", 0.6))
+                changes = character_module.character_changes(track.sound, word.lower(), intensity)
+                track.sound = Sound.model_validate({**track.sound.model_dump(), **changes})
             elif action.kind == "mix":
                 keys(p, {"volume_db", "delta_db", "pan", "mute", "solo", "name"})
                 changes = dict(p)
                 if "delta_db" in changes:
-                    changes["volume_db"] = track.volume_db + float(changes.pop("delta_db"))
-                checked = Track.model_validate({**track.model_dump(), **changes})
+                    changes["volume_db"] = max(-60.0, min(6.0, track.volume_db + float(changes.pop("delta_db"))))
+                try:
+                    checked = Track.model_validate({**track.model_dump(), **changes})
+                except ValueError as error:
+                    raise EditError(f"Those mixer settings are out of range: {', '.join(sorted(changes))}") from error
                 for key in changes:
                     setattr(track, key, getattr(checked, key))
             else:
-                sections = target_sections(project, action.section)
+                sections = target_sections(project, action.section, selection)
                 for section in sections:
                     clip = next((c for c in track.clips if c.section_id == section.id), None)
                     if action.kind in {"compose", "drums"}:
@@ -270,6 +414,60 @@ def apply_actions(original: Project, actions: list[Action]) -> Project:
                             clip = Clip(name=track.name, section_id=section.id)
                             track.clips.append(clip)
                         clip.notes = generate_notes(project, track, section, **p)
+                    elif action.kind == "kit":
+                        keys(p, {"kit", "layers", "density", "crash", "fill", "roll", "roll_from_bar", "seed"})
+                        if track.role != "drums":
+                            raise EditError(f"{track.name} is not a drum track; drum patterns need one")
+                        name = p.get("kit")
+                        if name is not None and name not in drums_module.KITS:
+                            raise Unsupported(f"There is no '{name}' kit. Available: {', '.join(sorted(drums_module.KITS))}.")
+                        layers = p.get("layers") or {}
+                        if not isinstance(layers, dict) or any(not isinstance(v, str) for v in layers.values()):
+                            raise EditError("Drum layers must be named patterns, for example {\"clap\": \"double\"}")
+                        try:
+                            notes = drums_module.build(section.bars, name, layers, density=float(p.get("density", 0.7)), seed=project.seed, crash=bool(p.get("crash", False)), fill=bool(p.get("fill", False)))
+                        except KeyError as error:
+                            raise Unsupported(f"There is no '{error.args[0]}' drum layer. Available: {', '.join(drums_module.LAYERS)}.") from error
+                        except ValueError as error:
+                            raise EditError(str(error)) from error
+                        if p.get("roll"):
+                            start_bar = int(p.get("roll_from_bar", max(0, section.bars - max(2, section.bars // 2))))
+                            if not 0 <= start_bar < section.bars:
+                                raise EditError("The roll starts outside this section")
+                            notes = [n for n in notes if n.pitch != drums_module.SNARE or n.start < start_bar * 4] + drums_module.build_roll(section.bars, start_bar)
+                        if findings is not None:
+                            chosen = drums_module.resolve(name, layers)
+                            findings.append(f"{section.name} kit: " + ", ".join(f"{layer} {pattern}" for layer, pattern in sorted(chosen.items()) if pattern != "none") + (", accelerating roll" if p.get("roll") else ""))
+                        if not clip:
+                            clip = Clip(name=track.name, section_id=section.id)
+                            track.clips.append(clip)
+                        clip.notes = sorted(notes, key=lambda n: (n.start, n.pitch))
+                    elif action.kind == "harmony":
+                        keys(p, {"from_track", "span", "voices", "low", "high", "velocity"})
+                        if track.role in {"drums", "audio"}:
+                            raise EditError("Chords need an instrument track")
+                        source_track = target_tracks(project, p.get("from_track") or track.id, selection)[0]
+                        source = next((c for c in source_track.clips if c.section_id == section.id), None)
+                        if source is None or not source.notes:
+                            raise EditError(f"{source_track.name} has nothing recorded in {section.name} to build chords from")
+                        span = float(p.get("span", 4))
+                        if span not in {1, 2, 4, 8, 16}:
+                            raise EditError("A chord can last 1, 2, 4, 8 or 16 beats")
+                        voices = int(p.get("voices", 3))
+                        if not 2 <= voices <= 5:
+                            raise EditError("Chords use between two and five voices")
+                        entries = harmony_module.progression(source.notes, section.bars, project.key, project.scale, span)
+                        if findings is not None:
+                            heard = "chord roots" if harmony_module.looks_like_roots(source.notes, section.bars) else "a melody"
+                            findings.append(f"Heard {heard} on {source_track.name} and built {harmony_module.describe(entries)} in {section.name}.")
+                        low = int(p.get("low", 48))
+                        high = int(p.get("high", 72))
+                        if not 0 <= low < high <= 127:
+                            raise EditError("The chord register is outside the playable range")
+                        if not clip:
+                            clip = Clip(name=track.name, section_id=section.id)
+                            track.clips.append(clip)
+                        clip.notes = harmony_module.voice(entries, low=low, high=high, voices=voices, velocity=int(p.get("velocity", 72)))
                     elif action.kind == "automation":
                         keys(p, {"parameter", "points", "operation"})
                         if p.get("operation") == "remove":
@@ -283,6 +481,10 @@ def apply_actions(original: Project, actions: list[Action]) -> Project:
                             raise EditError("Record or import audio onto audio tracks")
                         track.clips.append(Clip(name=track.name, section_id=section.id, notes=[Note.model_validate(n) for n in p.get("notes", [])]))
                     elif not clip:
+                        # Editing a whole track skips its empty sections; asking
+                        # for one specific section that is empty is still an error.
+                        if len(sections) > 1:
+                            continue
                         raise EditError(f"{track.name} has no clip in {section.name}")
                     elif action.kind == "transpose":
                         keys(p, {"semitones", "start", "end", "last_note"})
@@ -322,11 +524,26 @@ def apply_actions(original: Project, actions: list[Action]) -> Project:
                             raise EditError("Unknown note edit")
                     else:
                         raise EditError("Unsupported edit")
-    return Project.model_validate(project.model_dump())
+    return validated(project)
 
 
 def context(project: Project, track_id: str | None, section_id: str | None) -> dict:
+    """The compact picture of the project the model gets to reason over.
+
+    It names the instrument on each track and how full the selected part is,
+    because "make it warmer" means something different on a sub bass than on a
+    string pad, and "add a melody" means something different to an empty clip.
+    """
+    selected = next((t for t in project.tracks if t.id == track_id), None)
+    section = next((s for s in project.sections if s.id == section_id), None)
+    clip = next((c for c in selected.clips if c.section_id == section_id), None) if selected and section else None
+    detail: dict = {"track": track_id, "section": section_id}
+    if selected:
+        detail["instrument"] = selected.sound.preset
+        detail["notes"] = len(clip.notes) if clip else 0
+        active = {name: round(value, 3) for name, value in selected.sound.model_dump().items() if name in {"cutoff", "reverb", "flanger", "chorus", "autopan", "width", "drive"} and value}
+        detail["sound"] = active
     return {"tempo": project.tempo, "key": project.key, "scale": project.scale,
-            "tracks": [{"id": t.id, "name": t.name, "role": t.role, "locked": t.locked, "volume_db": t.volume_db} for t in project.tracks],
-            "sections": [{"id": s.id, "name": s.name, "bars": s.bars} for s in project.sections],
-            "selected_track": track_id, "selected_section": section_id}
+            "tracks": [{"id": t.id, "name": t.name, "role": t.role, "instrument": t.sound.preset, "locked": t.locked, "volume_db": t.volume_db} for t in project.tracks],
+            "sections": [{"id": s.id, "name": s.name, "bars": s.bars, "energy": s.energy} for s in project.sections],
+            "selected": detail}

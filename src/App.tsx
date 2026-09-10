@@ -59,6 +59,33 @@ const roleIcons = {
   audio: Mic,
 };
 
+const MELODIC_PRESETS = [
+  "supersaw",
+  "saw",
+  "pluck",
+  "sine",
+  "sub",
+  "pad",
+  "strings",
+  "choir",
+  "bell",
+  "fm",
+  "noise",
+] as const;
+const PRESET_LABELS: Record<string, string> = {
+  supersaw: "SUPERSAW",
+  saw: "SAW",
+  pluck: "PLUCK",
+  sine: "SINE",
+  sub: "SUB BASS",
+  pad: "PAD",
+  strings: "STRINGS",
+  choir: "CHOIR",
+  bell: "BELL",
+  fm: "FM",
+  noise: "NOISE / RISER",
+};
+
 function IconButton({
   title,
   onClick,
@@ -441,7 +468,7 @@ export default function App() {
       });
       setMessages((previous) => [
         ...previous,
-        { role: "assistant", content: result.plan.summary },
+        { role: "assistant", content: result.summary },
       ]);
       if (result.plan.actions.length) {
         studioAudio.stop();
@@ -1242,12 +1269,15 @@ export default function App() {
                   )
                 }
               >
-                {["pluck", "saw", "sine", "pad", "fm", "drumkit", "audio"].map(
-                  (p) => (
-                    <option key={p} value={p}>
-                      {p.toUpperCase()}
-                    </option>
-                  ),
+                {MELODIC_PRESETS.map((p) => (
+                  <option key={p} value={p}>
+                    {PRESET_LABELS[p]}
+                  </option>
+                ))}
+                {["drumkit", "audio"].includes(track.sound.preset) && (
+                  <option value={track.sound.preset}>
+                    {track.sound.preset.toUpperCase()}
+                  </option>
                 )}
               </select>
             </div>
@@ -1281,6 +1311,18 @@ export default function App() {
                     ["low", "Low", -24, 12, 0.5, " dB"],
                     ["mid", "Mid", -24, 12, 0.5, " dB"],
                     ["high", "High", -24, 12, 0.5, " dB"],
+                  ],
+                },
+                {
+                  name: "Motion",
+                  controls: [
+                    ["chorus", "Chorus", 0, 1, 0.01, ""],
+                    ["flanger", "Flanger", 0, 1, 0.01, ""],
+                    ["phaser", "Phaser", 0, 1, 0.01, ""],
+                    ["autopan", "Auto-pan", 0, 1, 0.01, ""],
+                    ["motion_rate", "Rate", 0.02, 8, 0.01, " Hz"],
+                    ["width", "Width", 0, 1, 0.01, ""],
+                    ["glide", "Glide", 0, 0.5, 0.005, " s"],
                   ],
                 },
               ].map((group) => (

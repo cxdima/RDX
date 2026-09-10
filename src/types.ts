@@ -31,9 +31,23 @@ export interface Sound {
   low: number;
   mid: number;
   high: number;
+  chorus: number;
+  flanger: number;
+  phaser: number;
+  autopan: number;
+  motion_rate: number;
+  width: number;
+  glide: number;
 }
 export interface Automation {
-  parameter: "cutoff" | "volume_db" | "pan" | "reverb";
+  parameter:
+    | "cutoff"
+    | "resonance"
+    | "volume_db"
+    | "pan"
+    | "reverb"
+    | "flanger"
+    | "chorus";
   section_id: string;
   points: [number, number][];
 }
@@ -71,7 +85,9 @@ export interface Action {
 }
 export interface Proposal {
   id: string;
-  plan: { summary: string; actions: Action[] };
+  plan: { summary: string; note: string; actions: Action[] };
+  /** Generated from the real diff by the server, not written by the model. */
+  summary: string;
   preview: Project;
 }
 export interface Status {

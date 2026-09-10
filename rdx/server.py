@@ -15,13 +15,14 @@ from urllib.parse import urlparse
 from fastapi import FastAPI, File, Form, Header, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
-from pydantic import Field, ValidationError
+from pydantic import Field
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from . import audio
 from .bridge import Bridge
 from .domain import Clip, EditRequest, Model, Project, new_track, uid
-from .engine import EditError, apply_actions, context, starter_project
+from .musical.describe import describe
+from .engine import Unsupported, apply_actions, context, starter_project
 from .model import DATA, ROOT, LocalModel
 from .store import Conflict, Store
 
@@ -196,31 +197,40 @@ async def chat(project_id: str, request: Chat):
         if original.revision != request.revision:
             raise Conflict("Refresh the project before asking for a change")
         ctx = context(original, request.track_id, request.section_id)
+        selection = {"track": request.track_id, "section": request.section_id}
         previous = store.messages(project_id)
         store.add_message(project_id, "user", request.message)
+        findings: list[str] = []
         try:
             plan = await asyncio.to_thread(model.generate, ctx, request.message, previous)
             try:
-                preview = apply_actions(original, plan.actions) if plan.actions else original
+                preview = apply_actions(original, plan.actions, selection, findings) if plan.actions else original
+            except Unsupported:
+                # RDX genuinely cannot do this. Rephrasing will not help, so the
+                # user hears it straight rather than getting a near-miss edit.
+                raise
             except ValueError as error:
                 if any(t.locked for t in original.tracks):
                     raise
+                findings.clear()
                 correction = request.message + "\nYour previous proposal failed validation: " + str(error)[:500] + "\nPrevious JSON: " + plan.model_dump_json() + "\nReturn one corrected JSON plan using the supported action kinds, track and section targets, and params. Do not broaden the original request."
                 plan = await asyncio.to_thread(model.generate, ctx, correction, [])
-                preview = apply_actions(original, plan.actions) if plan.actions else original
+                preview = apply_actions(original, plan.actions, selection, findings) if plan.actions else original
         except ValueError as error:
             store.add_message(project_id, "assistant", str(error))
             raise
         if store.get(project_id).revision != request.revision:
             raise Conflict("The project changed while the alternative was being prepared")
-        store.add_message(project_id, "assistant", plan.summary)
+        # What the user reads comes from the diff, never from the model.
+        summary = "\n".join(findings + [describe(original, preview)]) if plan.actions else (plan.note or plan.summary or "No change was proposed.")
+        store.add_message(project_id, "assistant", summary)
         proposal_id = uid()
         with proposal_lock:
-            proposals[proposal_id] = {"project_id": project_id, "revision": original.revision, "request": request.message, "context": ctx, "plan": plan, "created": time.time()}
+            proposals[proposal_id] = {"project_id": project_id, "revision": original.revision, "request": request.message, "context": ctx, "selection": selection, "plan": plan, "summary": summary, "created": time.time()}
             for old in list(proposals):
                 if time.time() - proposals[old]["created"] > 3600:
                     del proposals[old]
-        return {"id": proposal_id, "plan": plan, "preview": preview}
+        return {"id": proposal_id, "plan": plan, "preview": preview, "summary": summary}
 
 
 class Decision(Revision):
@@ -242,7 +252,8 @@ def apply_decision(proposal_id: str, request: Decision):
     if original.revision != request.revision or proposed["revision"] != request.revision:
         raise Conflict("The project changed after this alternative was prepared")
     if request.keep:
-        original = store.save(apply_actions(original, proposed["plan"].actions), request.revision, proposed["plan"].summary[:150])
+        label = proposed["summary"].replace("\n", "; ")[:150] or "Edit"
+        original = store.save(apply_actions(original, proposed["plan"].actions, proposed.get("selection")), request.revision, label)
     store.feedback(original.id, original.revision, proposed["request"], proposed["context"], proposed["plan"].model_dump(), "accepted" if request.keep else "rejected", request.comment)
     del proposals[proposal_id]
     return original

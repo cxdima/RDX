@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { MousePointer2, Pencil, Eraser } from "lucide-react";
 import type { Clip, Note, Section, Track } from "./types";
+import { DRUM_MAP } from "./audio/drums";
 
 const names = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
 export const noteName = (pitch: number) =>
@@ -73,14 +74,9 @@ export default function PianoRoll({
         ctx.lineTo(width, y);
         ctx.stroke();
         ctx.fillStyle = "#777d82";
-        if (
-          p % 12 === 0 ||
-          (track.role === "drums" && [36, 38, 42, 46].includes(p))
-        )
+        if (p % 12 === 0 || (track.role === "drums" && DRUM_MAP[p]))
           ctx.fillText(
-            track.role === "drums"
-              ? { 36: "Kick", 38: "Snare", 42: "Hat", 46: "Open" }[p] || ""
-              : noteName(p),
+            track.role === "drums" ? DRUM_MAP[p] || "" : noteName(p),
             4,
             y + cellH - 2,
           );
