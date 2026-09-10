@@ -146,9 +146,12 @@ npm test && npm run test:browser
 ```
 
 If `data/models/qwen3-4b` did not come across, `.venv/bin/python
-scripts/fetch_model.py` re-downloads the pinned revision. The adapters in
-`data/models/rdx-v*` cannot be re-downloaded — they were trained here — so copy
-them or plan to retrain.
+scripts/fetch_model.py` re-downloads the pinned revision — it is a pinned public
+download, not something that has to be preserved.
+
+**The trained adapter ships with the repository.** `data/models/rdx-v2/` is
+committed, 14 MB, alongside the instruction data and every evaluation that
+measured it. Cloning is enough; the training run never has to be repeated.
 
 **A machine with more memory changes what is worth doing.** Training was shaped
 throughout by 16 GB: batch size 1, gradient checkpointing forced on, four LoRA

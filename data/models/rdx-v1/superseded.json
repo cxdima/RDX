@@ -1,0 +1,18 @@
+{
+  "activated_at": "2026-09-10T04:20:28.816019+00:00",
+  "adapter_sha256": "c82a992693f8fc4057f525a1195727ce909f8f963e518493b65dc9a76fc7a075",
+  "base_passed": 4,
+  "adapter_passed": 9,
+  "total": 12,
+  "benchmark_version": 2,
+  "limits": "Measures executable instruction following on 12 authored requests; accepts equivalent absolute/relative gain and no-op last_note flags. Does not establish musical quality, audio understanding, or expert production ability.",
+  "review": "Initial development adapter. Preview and explicit acceptance remain required. Known instruction failures are retained in adapter-evaluation.json.",
+  "deactivated_at": "2026-09-10T16:30:07Z",
+  "deactivated_because": "Trained against the previous system prompt and action schema. Re-measured on benchmark version 3 it scores 9/22 against the base model's 10/22, so leaving it active would make RDX worse than no adapter. Weights are retained for comparison.",
+  "rescored": {
+    "benchmark_version": 3,
+    "adapter_passed": 9,
+    "base_passed": 10,
+    "total": 22
+  }
+}

@@ -6,8 +6,39 @@ __pycache__/
 .pytest_cache/
 *.pyc
 *.tsbuildinfo
-data/
 artifacts/
 .DS_Store
 .idea/
 *.iml
+
+# data/ is private by default: it holds the user's projects, recordings, chat
+# history and the bridge token. Everything below is an explicit exception, so
+# adding a file under data/ never publishes it by accident.
+data/*
+!data/models
+data/models/*
+
+# The trained adapter travels with the repo — 14 MB, and it means nobody ever
+# has to repeat the training run. The 4 GB base model does not: it is a pinned
+# public download, restored by scripts/fetch_model.py.
+!data/models/rdx-v2
+data/models/rdx-v2/*
+!data/models/rdx-v2/adapters.safetensors
+!data/models/rdx-v2/adapter_config.json
+!data/models/rdx-v2/training-record.json
+
+# The retired adapter's record, for provenance. Not its weights.
+!data/models/rdx-v1
+data/models/rdx-v1/*
+!data/models/rdx-v1/superseded.json
+!data/models/rdx-v1/training-record.json
+
+# The instruction data and every measurement that justified activating a model.
+!data/training
+data/training/*
+!data/training/*.jsonl
+!data/training/dataset.json
+!data/training/base-evaluation.json
+!data/training/adapter-evaluation.json
+!data/training/train.yaml
+!data/training/train.log
