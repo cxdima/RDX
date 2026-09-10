@@ -35,7 +35,7 @@ def keys(params: dict, allowed: set[str]):
 
 
 NUMERIC_PARAMS = {"factor", "tempo", "seed", "density", "variation", "semitones", "start", "end", "grid", "swing", "humanize", "velocity", "cutoff", "resonance", "attack", "release", "reverb", "delay", "drive", "low", "mid", "high", "volume_db", "delta_db", "pan", "bars", "energy", "index", "ceiling", "compression", "audio_offset", "chorus", "flanger", "phaser", "autopan", "motion_rate", "width", "glide", "intensity", "span", "voices", "roll_from_bar", "octave", "cut_bars", "from_cutoff", "to_cutoff", "start_beat", "beats", "to_db", "amount", "degrees"}
-BOOLEAN_PARAMS = {"locked", "last_note", "mute", "solo", "crash", "fill", "roll", "riser", "keep_rhythm", "sweep", "impact"}
+BOOLEAN_PARAMS = {"locked", "last_note", "mute", "solo", "crash", "fill", "roll", "riser", "keep_rhythm", "sweep", "impact", "accelerate"}
 TEXT_PARAMS = {"name", "role", "key", "scale", "pattern", "preset", "operation", "parameter", "note_id", "character", "kit", "from_track", "track", "layer_name", "source", "curve", "trigger", "shape", "problem", "colour", "against"}
 
 
@@ -258,7 +258,7 @@ def apply_actions(original: Project, actions: list[Action], selection: dict | No
             project = apply_actions(project, expanded, selection, None, measured, _depth + 1)
             continue
         if action.kind == "move":
-            keys(p, {"name", "intensity", "roll", "riser", "cut_bars", "from_cutoff", "to_cutoff", "track", "preset", "layer_name", "octave", "character", "keep", "start_beat", "beats", "to_db", "shape", "source", "tracks", "amount", "crash", "sweep", "impact", "bars", "factor", "roles"})
+            keys(p, {"name", "intensity", "roll", "riser", "cut_bars", "from_cutoff", "to_cutoff", "track", "preset", "layer_name", "octave", "character", "keep", "start_beat", "beats", "to_db", "shape", "source", "tracks", "amount", "crash", "sweep", "impact", "bars", "factor", "roles", "grid", "accelerate"})
             if _depth:
                 raise EditError("A production move cannot contain another move")
             name = p.get("name")

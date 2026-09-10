@@ -4,16 +4,16 @@ Loading pretrained model
 Loading datasets
 Training
 Trainable parameters: 0.730% (29.360M/4022.468M)
-Starting training..., iters: 800
+Starting training..., iters: 400
 
 Calculating loss...:   0%|          | 0/8 [00:00<?, ?it/s]
-Calculating loss...:  12%|█▎        | 1/8 [00:03<00:24,  3.49s/it]
-Calculating loss...:  25%|██▌       | 2/8 [00:06<00:18,  3.08s/it]
-Calculating loss...:  38%|███▊      | 3/8 [00:09<00:14,  2.91s/it]
-Calculating loss...:  50%|█████     | 4/8 [00:11<00:11,  2.84s/it]
-Calculating loss...:  62%|██████▎   | 5/8 [00:14<00:08,  2.83s/it]
-Calculating loss...:  75%|███████▌  | 6/8 [00:17<00:05,  2.82s/it]
-Calculating loss...:  88%|████████▊ | 7/8 [00:20<00:02,  2.84s/it]
-Calculating loss...: 100%|██████████| 8/8 [00:23<00:00,  2.88s/it]
-Calculating loss...: 100%|██████████| 8/8 [00:23<00:00,  2.90s/it]
-Iter 1: Val loss 5.505, Val took 23.192s
+Calculating loss...:  12%|█▎        | 1/8 [00:02<00:18,  2.68s/it]
+Calculating loss...:  25%|██▌       | 2/8 [00:05<00:16,  2.72s/it]
+Calculating loss...:  38%|███▊      | 3/8 [00:08<00:13,  2.73s/it]
+Calculating loss...:  50%|█████     | 4/8 [00:10<00:10,  2.73s/it]
+Calculating loss...:  62%|██████▎   | 5/8 [00:13<00:08,  2.71s/it]
+Calculating loss...:  75%|███████▌  | 6/8 [00:16<00:05,  2.70s/it]
+Calculating loss...:  88%|████████▊ | 7/8 [00:18<00:02,  2.68s/it]
+Calculating loss...: 100%|██████████| 8/8 [00:21<00:00,  2.68s/it]
+Calculating loss...: 100%|██████████| 8/8 [00:21<00:00,  2.69s/it]
+Iter 1: Val loss 5.505, Val took 21.563s

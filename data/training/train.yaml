@@ -3,7 +3,7 @@ batch_size: 4
 data: /Users/dmoiseenko/Development/RDX/data/training
 fine_tune_type: lora
 grad_checkpoint: true
-iters: 800
+iters: 400
 learning_rate: 6.0e-05
 lora_parameters:
   dropout: 0.0
@@ -12,13 +12,13 @@ lora_parameters:
 lr_schedule:
   arguments:
   - 6.0e-05
-  - 800
+  - 400
   - 6.0e-06
   name: cosine_decay
-  warmup: 60
+  warmup: 40
   warmup_init: 1.0e-06
 mask_prompt: true
-max_seq_length: 2048
+max_seq_length: 1792
 model: /Users/dmoiseenko/Development/RDX/data/models/qwen3-4b
 num_layers: 16
 save_every: 100

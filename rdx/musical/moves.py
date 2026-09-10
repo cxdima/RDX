@@ -9,7 +9,7 @@ other music without RDX guessing.
 """
 from __future__ import annotations
 
-from ..domain import Action, Project, Section, Track
+from ..domain import Action, Project, Section, Track, uid
 
 MELODIC = {"bass", "chords", "lead", "pad"}
 
@@ -254,7 +254,51 @@ def double_time(project: Project, section_id: str, *, factor: float = 2.0, roles
     return actions
 
 
-MOVES = {"buildup": buildup, "drop": drop, "breakdown": breakdown, "fade": fade, "layer": layer, "pump": pump, "transition": transition, "riser": riser, "double_time": double_time}
+def stutter(project: Project, section_id: str, *, beats: float = 2.0, grid: float = 0.25, accelerate: bool = True, tracks: list[str] | None = None) -> list[Action]:
+    """Retrigger the end of a section — the stutter into a drop.
+
+    A stutter is one short slice of music repeated, so this takes whatever is
+    playing at the start of the window and repeats it on the grid, optionally
+    getting faster. It is done in the notes rather than by an audio effect,
+    which means it is visible in the piano roll and it exports.
+    """
+    section = section_of(project, section_id)
+    length = section.bars * 4
+    if not 0 < beats <= length:
+        raise ValueError("The stutter has to be shorter than the section")
+    if grid not in {0.0625, 0.125, 0.25, 0.5}:
+        raise ValueError("A stutter repeats on a sixteenth, thirty-second or sixty-fourth")
+    start = length - beats
+    wanted = {t.lower() for t in tracks} if tracks else None
+    actions: list[Action] = []
+    for track in editable(project):
+        if wanted and track.id not in wanted and track.name.lower() not in wanted and track.role not in wanted:
+            continue
+        clip = next((c for c in track.clips if c.section_id == section_id), None)
+        if not clip or not clip.notes:
+            continue
+        # The slice is whatever sounds in the first step of the window.
+        slice_notes = [n for n in clip.notes if start - grid < n.start < start + grid] or [n for n in clip.notes if n.start <= start < n.start + n.duration]
+        if not slice_notes:
+            continue
+        kept = [n for n in clip.notes if n.start < start]
+        step, at, index = grid, start, 0
+        while at < length - 1e-6:
+            for note in slice_notes:
+                duration = min(step * 0.9, length - at)
+                if duration > 0.02:
+                    kept.append(note.model_copy(update={"id": uid(), "start": round(at, 4), "duration": round(duration, 4), "velocity": max(1, min(127, note.velocity - index * 2))}, deep=True))
+            at += step
+            index += 1
+            if accelerate and index % 4 == 0 and step > 0.0625:
+                step /= 2  # each group of four repeats twice as fast as the last
+        actions.append(Action(kind="notes", track=track.id, section=section_id, params={"operation": "replace", "notes": [{"pitch": n.pitch, "start": n.start, "duration": n.duration, "velocity": n.velocity} for n in sorted(kept, key=lambda n: (n.start, n.pitch))]}))
+    if not actions:
+        raise ValueError("There is nothing playing at the end of this section to stutter")
+    return actions
+
+
+MOVES = {"buildup": buildup, "drop": drop, "breakdown": breakdown, "fade": fade, "layer": layer, "pump": pump, "transition": transition, "riser": riser, "double_time": double_time, "stutter": stutter}
 
 # Moves that change how tracks behave everywhere rather than inside one
 # section, so the engine must not hand them a section to work in.
@@ -270,4 +314,5 @@ DESCRIPTIONS = {
     "transition": "sweeps the filters open at the end of a section, leaves a gap, and starts the next one on a crash",
     "riser": "sweeps a noise riser up into the end of the section on its own track",
     "double_time": "plays the same parts at half or double speed without changing the tempo",
+    "stutter": "retriggers whatever is playing at the end of the section, getting faster into the next one",
 }

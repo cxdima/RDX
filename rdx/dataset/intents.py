@@ -39,6 +39,20 @@ class Intent:
     phrasings: tuple[str, ...]
     build: Build
     scenes: int = 3
+    # A mix problem the scene should already have been measured as having.
+    # Without this, `mix_fix` would appear in no example at all and the adapter
+    # would learn never to reach for it, whatever the prompt says.
+    measured: str | None = None
+
+
+# Band shares that produce exactly one named problem in rdx/musical/mixdown.py,
+# so a training scene can carry a measurement without rendering any audio.
+MEASURED_BANDS: dict[str, dict[str, float]] = {
+    "muddy": {"sub": 0.05, "low": 0.12, "mud": 0.35, "mid": 0.28, "high": 0.15, "air": 0.05},
+    "harsh": {"sub": 0.06, "low": 0.16, "mud": 0.15, "mid": 0.25, "high": 0.34, "air": 0.04},
+    "thin": {"sub": 0.02, "low": 0.08, "mud": 0.18, "mid": 0.42, "high": 0.24, "air": 0.06},
+    "boomy": {"sub": 0.18, "low": 0.30, "mud": 0.20, "mid": 0.18, "high": 0.10, "air": 0.04},
+}
 
 
 def act(kind: str, params: dict | None = None, track: str | None = None, section: str | None = None) -> dict:
@@ -292,6 +306,12 @@ def intents() -> list[Intent]:
             "put a transition at the end of this part",
             "it jumps straight in, give me something at the seam",
         ), move_build("transition")),
+        Intent("stutter", (
+            "stutter the end of this into the drop",
+            "retrigger the last bit of this section",
+            "I want a stutter right before the drop",
+            "chop the ending up so it repeats faster",
+        ), move_build("stutter")),
         Intent("riser_alone", (
             "put a riser over this",
             "I want a riser sweeping up here",
@@ -422,6 +442,41 @@ def intents() -> list[Intent]:
             "put in a string track and turn my humming into its chord progression",
             "I want strings playing the progression I sang",
         ), lambda scene, rng: ([act("add_track", {"role": "chords", "name": "Strings", "preset": "strings"}), act("harmony", {"from_track": scene.name(scene.selected_role)}, track="Strings", section="selected")], "")),
+    ]
+
+    # Correcting a measured mix. The context carries the reading, so these
+    # teach the model to act on a measurement rather than on a hunch — and the
+    # refusal below teaches the other half: no measurement, no correction.
+    items += [
+        Intent("mix_fix_muddy", (
+            "the mix is muddy",
+            "it sounds cloudy and thick",
+            "there's too much build-up in the low mids",
+            "clean up the mud in this mix",
+            "the whole thing sounds congested",
+        ), lambda scene, rng: ([act("mix_fix", {"problem": "muddy"})], ""), measured="muddy"),
+        Intent("mix_fix_harsh", (
+            "the mix is harsh",
+            "the top end is hurting my ears",
+            "it's too bright and fatiguing",
+            "take the harshness out of the mix",
+        ), lambda scene, rng: ([act("mix_fix", {"problem": "harsh"})], ""), measured="harsh"),
+        Intent("mix_fix_thin", (
+            "the mix has no weight",
+            "it sounds thin overall",
+            "there's nothing underneath the mix",
+        ), lambda scene, rng: ([act("mix_fix", {"problem": "thin"})], ""), measured="thin"),
+        Intent("mix_fix_all", (
+            "fix whatever is wrong with the mix",
+            "sort the mix out",
+            "correct everything you measured",
+        ), lambda scene, rng: ([act("mix_fix", {})], ""), measured="boomy"),
+        Intent("mix_needs_measuring", (
+            "is the mix muddy",
+            "what's wrong with my mix",
+            "tell me what needs fixing in the mix",
+            "how does the mix look",
+        ), refuse("I have not measured this mix yet. Analyse it in the mixer and I will tell you what is actually in it.")),
     ]
 
     items += [

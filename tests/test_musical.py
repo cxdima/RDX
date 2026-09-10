@@ -833,3 +833,32 @@ def test_every_move_stays_inside_its_section(project, selection):
 def test_an_unknown_move_is_refused_by_name(project, selection):
     with pytest.raises(Unsupported, match="transition"):
         apply_actions(project, [Action(kind="move", section="Main", params={"name": "tapestop"})], selection)
+
+
+def test_a_stutter_retriggers_the_end_and_speeds_up(project, selection):
+    after = apply_actions(project, [Action(kind="move", section="Main", params={"name": "stutter", "beats": 2, "tracks": ["lead"]})], selection)
+    main = next(s for s in after.sections if s.name == "Main")
+    clip = next(c for c in next(t for t in after.tracks if t.role == "lead").clips if c.section_id == main.id)
+    window = sorted(n.start for n in clip.notes if n.start >= main.bars * 4 - 2)
+    gaps = [round(b - a, 4) for a, b in zip(window, window[1:]) if b > a + 1e-9]
+    assert gaps, "the window should be full of repeats"
+    assert gaps[-1] <= gaps[0], "and they should get closer together"
+    assert all(n.start + n.duration <= main.bars * 4 + 1e-9 for n in clip.notes)
+
+
+def test_a_stutter_leaves_the_rest_of_the_section_alone(project, selection):
+    after = apply_actions(project, [Action(kind="move", section="Main", params={"name": "stutter", "beats": 2, "tracks": ["lead"]})], selection)
+    main = next(s for s in after.sections if s.name == "Main")
+    before = next(c for c in next(t for t in project.tracks if t.role == "lead").clips if c.section_id == main.id)
+    now = next(c for c in next(t for t in after.tracks if t.role == "lead").clips if c.section_id == main.id)
+    limit = main.bars * 4 - 2
+    assert [(n.pitch, n.start) for n in before.notes if n.start < limit] == [(n.pitch, n.start) for n in now.notes if n.start < limit]
+
+
+def test_a_stutter_repeats_one_slice_rather_than_inventing_notes(project, selection):
+    after = apply_actions(project, [Action(kind="move", section="Main", params={"name": "stutter", "beats": 2, "tracks": ["lead"]})], selection)
+    main = next(s for s in after.sections if s.name == "Main")
+    before = next(c for c in next(t for t in project.tracks if t.role == "lead").clips if c.section_id == main.id)
+    now = next(c for c in next(t for t in after.tracks if t.role == "lead").clips if c.section_id == main.id)
+    repeated = {n.pitch for n in now.notes if n.start >= main.bars * 4 - 2}
+    assert repeated <= {n.pitch for n in before.notes}, "every note in the stutter was already in the part"

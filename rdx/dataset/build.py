@@ -13,7 +13,8 @@ from pathlib import Path
 from ..domain import Action
 from ..engine import apply_actions, context, starter_project
 from ..model import SYSTEM
-from .intents import Intent, Scene, intents
+from ..musical import mixdown
+from .intents import MEASURED_BANDS, Intent, Scene, intents
 
 ROOT = Path(__file__).resolve().parent.parent.parent
 DESTINATION = ROOT / "data/training"
@@ -30,7 +31,23 @@ NAME_SETS = (
 )
 
 
-def make_scene(rng: random.Random) -> tuple[Scene, object, dict]:
+def synthetic_measurement(project, problem: str) -> dict:
+    """A measurement shaped to show exactly one problem, without any audio.
+
+    Mix analysis normally comes from rendered stems. Teaching the model *when*
+    to reach for a correction needs only the shape of the reading, not the
+    audio behind it, and generating it here keeps the dataset build fast and
+    deterministic. The numbers still go through the real finding rules.
+    """
+    bands = MEASURED_BANDS[problem]
+    tracks = [
+        mixdown.TrackMix(track_id=track.id, name=track.name, role=track.role, rms_db=-14.0, peak_db=-4.0, crest_db=10.0, correlation=0.9, bands=dict(bands), energy=1.0)
+        for track in project.tracks
+    ]
+    return mixdown.Mix(tracks=tracks, bands=dict(bands), crest_db=10.0, peak_db=-1.0, loudness_lufs=-14.0).as_dict()
+
+
+def make_scene(rng: random.Random, measured: str | None = None) -> tuple[Scene, object, dict, dict | None]:
     """A project, the selection inside it, and the context the model will see."""
     project = starter_project()
     project.seed = rng.randint(1, 9999)
@@ -57,7 +74,8 @@ def make_scene(rng: random.Random) -> tuple[Scene, object, dict]:
         selected_bars=section.bars,
         track_names={t.role: t.name for t in project.tracks},
     )
-    return scene, project, context(project, selected.id, section.id)
+    reading = synthetic_measurement(project, measured) if measured else None
+    return scene, project, context(project, selected.id, section.id, reading), reading
 
 
 def fill(phrasing: str, scene: Scene) -> str:
@@ -105,12 +123,12 @@ def build() -> dict:
             repeats = intent.scenes if split == "train" else 1
             for phrasing in phrasings:
                 for _ in range(repeats):
-                    scene, project, ctx = make_scene(rng)
+                    scene, project, ctx, reading = make_scene(rng, intent.measured)
                     try:
                         actions, note = intent.build(scene, rng)
                         if actions:
                             # Refuse to teach anything the engine will not run.
-                            apply_actions(project, [Action.model_validate(a) for a in actions], {"track": ctx["selected"]["track"], "section": ctx["selected"]["section"]})
+                            apply_actions(project, [Action.model_validate(a) for a in actions], {"track": ctx["selected"]["track"], "section": ctx["selected"]["section"]}, None, reading)
                     except Exception:
                         skipped[intent.name] = skipped.get(intent.name, 0) + 1
                         continue
