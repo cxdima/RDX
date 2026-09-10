@@ -127,8 +127,10 @@ CASES: list[Case] = [
     Case("I want this melody to sound absolutely massive.", "musical language", does("character", character="huge")),
     # Two things at once: both must happen.
     Case("Make the bass darker and turn it down a bit.", "compound", lambda p, pr, refused=None: None if len(p.actions) >= 2 and find(p, "character") and find(p, "mix") else f"expected a darker character and a level change, got {[a.kind for a in p.actions]}"),
+    # Ducking: a real operation now, so acting is correct and refusing is not.
+    Case("The chords need to move out of the way each time the kick lands.", "musical language", lambda p, pr, refused=None: None if find(p, "sidechain") or (find(p, "move") and find(p, "move")[0].params.get("name") == "pump") else f"expected ducking, got {[(a.kind, a.params) for a in p.actions]}"),
+    Case("I want the whole track breathing with the beat.", "musical language", lambda p, pr, refused=None: None if find(p, "sidechain") or (find(p, "move") and find(p, "move")[0].params.get("name") == "pump") else f"expected ducking, got {[(a.kind, a.params) for a in p.actions]}"),
     # Things RDX cannot do. Saying so is the correct answer.
-    Case("Sidechain the pads to the kick so it pumps.", "declining", declines()),
     Case("Load Serum on the lead and use my preset.", "declining", declines()),
     Case("Put a tape stop right before the drop.", "declining", declines()),
     Case("Make it better.", "declining", declines()),
@@ -203,7 +205,7 @@ def evaluate(use_adapter: bool = False, verbose: bool = True) -> dict:
         bucket["total"] += 1
         bucket["passed"] += int(row["passed"])
     report = {
-        "benchmark_version": 3,
+        "benchmark_version": 4,
         "model": "adapter" if use_adapter else "base",
         "passed": sum(r["passed"] for r in results),
         "total": len(results),
@@ -212,7 +214,7 @@ def evaluate(use_adapter: bool = False, verbose: bool = True) -> dict:
         "wrong_edits": [r["request"] for r in results if r.get("outcome") == "acted" and not r["passed"]],
         "leaked_into_training": leaked,
         "cases": results,
-        "limits": "Executable instruction following on 22 hand-written requests in the user's own phrasing, none of which appear in the training data. A refusal counts whether the model declined or the engine stopped it, because either way the user is told RDX cannot do it; wrong_edits lists the cases where something different was silently applied, which is the failure that matters. Does not measure musical quality, taste or audio understanding.",
+        "limits": f"Executable instruction following on {len(results)} hand-written requests in the producer's own phrasing, none of which appear in the training data. A refusal counts whether the model declined or the engine stopped it, because either way the user is told RDX cannot do it; wrong_edits lists the cases where something different was silently applied, which is the failure that matters. Does not measure musical quality, taste or audio understanding.",
     }
     (DATA / "training" / ("adapter-evaluation.json" if use_adapter else "base-evaluation.json")).write_text(json.dumps(report, indent=2))
     if verbose:

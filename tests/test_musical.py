@@ -7,13 +7,15 @@ from __future__ import annotations
 
 import json
 import re
+import shutil
+import subprocess
 from pathlib import Path
 
 import pytest
 
 from rdx.domain import Action, Clip, DRUM_MAP, Note, Sound
 from rdx.engine import EditError, Unsupported, apply_actions, starter_project
-from rdx.musical import drums, harmony, moves
+from rdx.musical import drums, harmony, moves, sidechain
 from rdx.musical.character import CHARACTERS, character_changes
 from rdx.musical.describe import describe
 
@@ -249,6 +251,124 @@ def test_moves_respect_protected_tracks(project, selection):
     assert not drum_track.automation, "a protected track should be left alone"
 
 
+# --- ducking ---------------------------------------------------------------
+
+
+def four_kicks(bars=1):
+    return [Note(pitch=drums.KICK, start=bar * 4 + beat, duration=0.12, velocity=100) for bar in range(bars) for beat in (0, 1, 2, 3)]
+
+
+def gain_at(points, beat):
+    """Read the ducking curve the way the audio engine will: linear between points."""
+    for (a_beat, a_gain), (b_beat, b_gain) in zip(points, points[1:]):
+        if a_beat <= beat <= b_beat:
+            if b_beat - a_beat < 1e-9:
+                return b_gain
+            return a_gain + (b_gain - a_gain) * (beat - a_beat) / (b_beat - a_beat)
+    return points[-1][1]
+
+
+def test_the_level_falls_when_the_kick_lands_and_returns_before_the_next():
+    points = sidechain.ducking_points(sidechain.trigger_beats(four_kicks(), "kick"), 4, amount=0.75, attack=0.02, release=0.9, curve="exponential")
+    assert gain_at(points, 0.02) == pytest.approx(0.25, abs=0.01), "a quarter of the level under the kick"
+    assert gain_at(points, 0.95) > 0.95, "and back up by the next beat"
+
+
+def test_a_deeper_amount_ducks_further():
+    shallow = sidechain.ducking_points([0.0], 4, amount=0.3, attack=0.02, release=0.9, curve="linear")
+    deep = sidechain.ducking_points([0.0], 4, amount=0.9, attack=0.02, release=0.9, curve="linear")
+    assert gain_at(deep, 0.02) < gain_at(shallow, 0.02)
+
+
+def test_a_longer_release_is_still_down_where_a_short_one_has_recovered():
+    short = sidechain.ducking_points([0.0], 8, amount=0.75, attack=0.02, release=0.35, curve="linear")
+    long = sidechain.ducking_points([0.0], 8, amount=0.75, attack=0.02, release=1.9, curve="linear")
+    assert gain_at(short, 0.5) > gain_at(long, 0.5)
+
+
+def test_the_curve_never_leaves_the_audible_range():
+    for name, shape in sidechain.SHAPES.items():
+        points = sidechain.ducking_points(sidechain.trigger_beats(four_kicks(2), "kick"), 8, amount=shape.amount, attack=shape.attack, release=shape.release, curve=shape.curve)
+        assert points[0][0] == 0.0 and points[-1][0] == 8.0, name
+        assert all(0 <= gain <= 1 for _, gain in points), name
+        assert all(b[0] >= a[0] for a, b in zip(points, points[1:])), f"{name} must move forwards in time"
+
+
+def test_a_fast_pattern_cuts_the_recovery_short_instead_of_overlapping():
+    points = sidechain.ducking_points([0.0, 0.5], 4, amount=0.8, attack=0.02, release=2.0, curve="linear")
+    assert gain_at(points, 0.52) == pytest.approx(0.2, abs=0.01), "the second hit ducks from wherever it got to"
+
+
+def test_only_the_named_drum_voice_triggers_the_duck():
+    notes = four_kicks() + [Note(pitch=drums.HAT, start=0.5, duration=0.1, velocity=50)]
+    assert sidechain.trigger_beats(notes, "kick") == [0.0, 1.0, 2.0, 3.0]
+    assert 0.5 in sidechain.trigger_beats(notes, "all")
+
+
+def test_a_flammed_clap_ducks_once_not_twice():
+    claps = [Note(pitch=drums.CLAP, start=1.0, duration=0.1, velocity=96), Note(pitch=drums.CLAP, start=1.125, duration=0.1, velocity=74)]
+    assert sidechain.trigger_beats(claps, "clap") == [1.0]
+
+
+def test_no_source_notes_leaves_the_level_alone():
+    assert sidechain.ducking_points([], 4, amount=0.9, attack=0.02, release=1, curve="linear") == [[0.0, 1.0], [4.0, 1.0]]
+
+
+def test_depth_is_reported_in_decibels_a_producer_would_recognise():
+    assert sidechain.depth_db(0.75) == -12.0
+    assert sidechain.depth_db(0.5) == -6.0
+
+
+def test_sidechain_defaults_to_the_kick_of_the_one_drum_track(project, selection):
+    after = apply_actions(project, [Action(kind="sidechain", track="bass", params={"shape": "pump"})], selection)
+    bass = next(t for t in after.tracks if t.role == "bass")
+    drum_track = next(t for t in after.tracks if t.role == "drums")
+    assert bass.sidechain.source == drum_track.id
+    assert bass.sidechain.trigger == "kick"
+    assert bass.sidechain.amount == sidechain.SHAPES["pump"].amount
+
+
+def test_the_pump_move_ducks_every_instrument_but_not_the_drums(project, selection):
+    after = apply_actions(project, [Action(kind="move", params={"name": "pump"})], selection)
+    ducked = {t.role for t in after.tracks if t.sidechain}
+    assert ducked == {"bass", "chords", "lead"}
+
+
+def test_ducking_can_be_taken_off_again(project, selection):
+    on = apply_actions(project, [Action(kind="move", params={"name": "pump"})], selection)
+    off = apply_actions(on, [Action(kind="sidechain", track="bass", params={"operation": "remove"})], selection)
+    assert next(t for t in off.tracks if t.role == "bass").sidechain is None
+
+
+def test_a_track_cannot_duck_to_itself(project, selection):
+    with pytest.raises(EditError):
+        apply_actions(project, [Action(kind="sidechain", track="bass", params={"source": "bass"})], selection)
+
+
+def test_removing_the_trigger_track_removes_the_ducking_with_it(project, selection):
+    on = apply_actions(project, [Action(kind="move", params={"name": "pump"})], selection)
+    after = apply_actions(on, [Action(kind="remove_track", track="drums", params={})], selection)
+    assert not any(t.sidechain for t in after.tracks)
+
+
+def test_ducking_reports_the_depth_it_actually_applied(project, selection):
+    findings: list[str] = []
+    after = apply_actions(project, [Action(kind="sidechain", track="bass", params={"shape": "pump"})], selection, findings)
+    assert "12.0 dB" in findings[0]
+    assert "12.0 dB" in describe(project, after)
+
+
+def test_an_unknown_ducking_shape_is_refused_by_name(project, selection):
+    with pytest.raises(Unsupported, match="pump"):
+        apply_actions(project, [Action(kind="sidechain", track="bass", params={"shape": "squash"})], selection)
+
+
+def test_ducking_to_a_recording_is_refused_rather_than_approximated(project, selection):
+    with_audio = apply_actions(project, [Action(kind="add_track", params={"role": "audio", "name": "Vocal"})], selection)
+    with pytest.raises(Unsupported, match="recording"):
+        apply_actions(with_audio, [Action(kind="sidechain", track="bass", params={"source": "Vocal"})], selection)
+
+
 # --- targeting -------------------------------------------------------------
 
 
@@ -343,3 +463,59 @@ def test_the_drum_map_matches_the_audio_engine():
     literal = re.sub(r"(\d+)\s*:", r'"\1":', block.group(1)).replace("'", '"')
     mirrored = json.loads(re.sub(r",\s*}", "}", literal))
     assert {int(k): v for k, v in mirrored.items()} == DRUM_MAP
+
+
+def javascript_object(source: str, name: str) -> dict:
+    """Read one exported object literal out of a TypeScript file as JSON."""
+    block = re.search(rf"export const {name}[^=]*=\s*(\{{.*?\n\}})\s*;", source, re.S)
+    assert block, f"the audio engine must export {name}"
+    literal = re.sub(r"(\w+)\s*:", r'"\1":', block.group(1)).replace("'", '"')
+    return json.loads(re.sub(r",(\s*[}\]])", r"\1", literal))
+
+
+def test_the_ducking_shapes_match_the_audio_engine():
+    """Python decides what a pump is; the browser must play the same curve."""
+    source = (ROOT / "src/audio/sidechain.ts").read_text()
+    mirrored = javascript_object(source, "SHAPES")
+    assert set(mirrored) == set(sidechain.SHAPES)
+    for name, shape in sidechain.SHAPES.items():
+        assert mirrored[name] == {"amount": shape.amount, "release": shape.release, "attack": shape.attack, "curve": shape.curve}, name
+    triggers = javascript_object(source, "TRIGGERS")
+    assert triggers == sidechain.TRIGGERS
+
+
+CROSS_CHECK = """
+import { duckingPoints, SHAPES, triggerBeats } from "%s";
+const notes = [];
+for (let bar = 0; bar < 2; bar++)
+  for (const beat of [0, 1, 2, 3])
+    notes.push({ pitch: 36, start: bar * 4 + beat, duration: 0.12, velocity: 100 });
+const out = {};
+for (const [name, shape] of Object.entries(SHAPES))
+  out[name] = duckingPoints(triggerBeats(notes, "kick"), 8, shape);
+out.crowded = duckingPoints([0, 0.5, 0.75], 4, { amount: 0.8, attack: 0.02, release: 2, curve: "linear" });
+console.log(JSON.stringify(out));
+"""
+
+
+def test_the_ducking_curve_is_identical_in_both_languages(tmp_path):
+    """The table matching is not enough; the arithmetic must agree too.
+
+    Rounding is the trap here: Python rounds halves to even and JavaScript
+    rounds them up, which silently moves points apart. This runs the real
+    TypeScript and compares every point.
+    """
+    node = shutil.which("node")
+    if not node:
+        pytest.skip("node is not installed")
+    script = tmp_path / "cross-check.mjs"
+    script.write_text(CROSS_CHECK % (ROOT / "src/audio/sidechain.ts"))
+    result = subprocess.run([node, "--experimental-strip-types", str(script)], capture_output=True, text=True, timeout=90)
+    assert result.returncode == 0, result.stderr
+    mirrored = json.loads(result.stdout)
+
+    kicks = [Note(pitch=drums.KICK, start=bar * 4 + beat, duration=0.12, velocity=100) for bar in range(2) for beat in (0, 1, 2, 3)]
+    beats = sidechain.trigger_beats(kicks, "kick")
+    for name, shape in sidechain.SHAPES.items():
+        assert sidechain.ducking_points(beats, 8, amount=shape.amount, attack=shape.attack, release=shape.release, curve=shape.curve) == mirrored[name], name
+    assert sidechain.ducking_points([0.0, 0.5, 0.75], 4, amount=0.8, attack=0.02, release=2.0, curve="linear") == mirrored["crowded"]

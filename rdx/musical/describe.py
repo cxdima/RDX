@@ -7,7 +7,8 @@ change disagree, this is the one the user sees.
 """
 from __future__ import annotations
 
-from ..domain import Project, Track
+from ..domain import Project, Sidechain, Track
+from .sidechain import depth_db, nearest_shape
 
 FIELDS = {
     "cutoff": ("filter", "Hz", 0),
@@ -54,7 +55,14 @@ def section_names(project: Project) -> dict[str, str]:
     return {s.id: s.name for s in project.sections}
 
 
-def track_changes(before: Track, after: Track, names: dict[str, str]) -> list[str]:
+def ducking(setting: Sidechain, tracks: dict[str, str]) -> str:
+    """'ducking 12 dB under Drums' kick (pump)' — the real numbers, not a label."""
+    shape = nearest_shape(setting.amount, setting.release, setting.curve)
+    source = tracks.get(setting.source, "another track")
+    return f"ducking {abs(depth_db(setting.amount))} dB under {source}'s {setting.trigger}" + (f" ({shape})" if shape else f", back over {round(setting.release, 2)} beats")
+
+
+def track_changes(before: Track, after: Track, names: dict[str, str], tracks: dict[str, str] | None = None) -> list[str]:
     parts: list[str] = []
     if before.name != after.name:
         parts.append(f"renamed to {after.name}")
@@ -72,6 +80,8 @@ def track_changes(before: Track, after: Track, names: dict[str, str]) -> list[st
         old, new = getattr(before, flag), getattr(after, flag)
         if old != new:
             parts.append(word if new else f"no longer {word}")
+    if before.sidechain != after.sidechain:
+        parts.append(ducking(after.sidechain, tracks or {}) if after.sidechain else "ducking removed")
     old_clips = {c.section_id: c for c in before.clips}
     for clip in after.clips:
         previous = old_clips.get(clip.section_id)
@@ -129,6 +139,7 @@ def describe(before: Project, after: Project) -> str:
         lines.append("Reordered the arrangement")
 
     old_tracks = {t.id: t for t in before.tracks}
+    track_names = {t.id: t.name for t in before.tracks} | {t.id: t.name for t in after.tracks}
     for track in after.tracks:
         previous = old_tracks.get(track.id)
         if previous is None:
@@ -136,7 +147,7 @@ def describe(before: Project, after: Project) -> str:
             detail = f"{track.role}, {track.sound.preset}" + (f", {count(notes, 'note')}" if notes else "")
             lines.append(f"Added track {track.name} ({detail})")
             continue
-        parts = track_changes(previous, track, names)
+        parts = track_changes(previous, track, names, track_names)
         if parts:
             lines.append(f"{track.name}: " + ", ".join(parts))
     for track in before.tracks:

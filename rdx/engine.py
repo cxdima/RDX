@@ -5,11 +5,12 @@ import math
 
 from music21 import pitch, scale
 
-from .domain import Action, Automation, Clip, Master, MELODIC_PRESETS, Note, Project, Section, Sound, Track, new_track, uid
+from .domain import Action, Automation, Clip, Master, MELODIC_PRESETS, Note, Project, Section, Sidechain, Sound, Track, new_track, uid
 from .musical import character as character_module
 from .musical import drums as drums_module
 from .musical import harmony as harmony_module
 from .musical import moves as moves_module
+from .musical import sidechain as sidechain_module
 
 
 class EditError(ValueError):
@@ -30,9 +31,9 @@ def keys(params: dict, allowed: set[str]):
         raise EditError(f"Unsupported settings: {', '.join(sorted(unknown))}")
 
 
-NUMERIC_PARAMS = {"tempo", "seed", "density", "variation", "semitones", "start", "end", "grid", "swing", "humanize", "velocity", "cutoff", "resonance", "attack", "release", "reverb", "delay", "drive", "low", "mid", "high", "volume_db", "delta_db", "pan", "bars", "energy", "index", "ceiling", "compression", "audio_offset", "chorus", "flanger", "phaser", "autopan", "motion_rate", "width", "glide", "intensity", "span", "voices", "roll_from_bar", "octave", "cut_bars", "from_cutoff", "to_cutoff", "start_beat", "beats", "to_db"}
+NUMERIC_PARAMS = {"tempo", "seed", "density", "variation", "semitones", "start", "end", "grid", "swing", "humanize", "velocity", "cutoff", "resonance", "attack", "release", "reverb", "delay", "drive", "low", "mid", "high", "volume_db", "delta_db", "pan", "bars", "energy", "index", "ceiling", "compression", "audio_offset", "chorus", "flanger", "phaser", "autopan", "motion_rate", "width", "glide", "intensity", "span", "voices", "roll_from_bar", "octave", "cut_bars", "from_cutoff", "to_cutoff", "start_beat", "beats", "to_db", "amount"}
 BOOLEAN_PARAMS = {"locked", "last_note", "mute", "solo", "crash", "fill", "roll", "riser"}
-TEXT_PARAMS = {"name", "role", "key", "scale", "pattern", "preset", "operation", "parameter", "note_id", "character", "kit", "from_track", "track", "layer_name"}
+TEXT_PARAMS = {"name", "role", "key", "scale", "pattern", "preset", "operation", "parameter", "note_id", "character", "kit", "from_track", "track", "layer_name", "source", "curve", "trigger", "shape"}
 
 
 def parameter_types(params: dict):
@@ -127,6 +128,21 @@ def target_tracks(project: Project, target: str | None, selection: dict | None =
     raise EditError(f"More than one track matches '{target}'. Name one of: {available}.")
 
 
+def default_source(project: Project, target: str | None, ducked: Track) -> Track:
+    """The track whose hits key a duck.
+
+    Almost always the kick, so an unnamed source finds the one drum track
+    rather than making the model guess an id. With no drum track and nothing
+    named, saying so beats picking something arbitrary.
+    """
+    if target in (None, "", "selected"):
+        drums = [t for t in project.tracks if t.role == "drums" and t.id != ducked.id]
+        if len(drums) == 1:
+            return drums[0]
+        raise EditError("Say which track should trigger the ducking, for example the drums.")
+    return target_tracks(project, target)[0]
+
+
 def target_sections(project: Project, target: str | None, selection: dict | None = None) -> list[Section]:
     target = resolve_section(project, target, selection)
     if target == "all":
@@ -215,7 +231,7 @@ def apply_actions(original: Project, actions: list[Action], selection: dict | No
         p = action.params
         parameter_types(p)
         if action.kind == "move":
-            keys(p, {"name", "intensity", "roll", "riser", "cut_bars", "from_cutoff", "to_cutoff", "track", "preset", "layer_name", "octave", "character", "keep", "start_beat", "beats", "to_db"})
+            keys(p, {"name", "intensity", "roll", "riser", "cut_bars", "from_cutoff", "to_cutoff", "track", "preset", "layer_name", "octave", "character", "keep", "start_beat", "beats", "to_db", "shape", "source", "tracks", "amount"})
             if _depth:
                 raise EditError("A production move cannot contain another move")
             name = p.get("name")
@@ -224,6 +240,8 @@ def apply_actions(original: Project, actions: list[Action], selection: dict | No
             arguments = {k: v for k, v in p.items() if k != "name"}
             if name == "layer":
                 arguments["track_target"] = resolve_track(project, arguments.pop("track", None) or action.track, selection, "layer")
+            elif name in moves_module.WHOLE_TRACK_MOVES:
+                arguments.pop("track", None)
             else:
                 arguments["section_id"] = target_sections(project, action.section, selection)[0].id
             try:
@@ -359,6 +377,11 @@ def apply_actions(original: Project, actions: list[Action], selection: dict | No
                 if len(project.tracks) == 1:
                     raise EditError("Keep at least one track")
                 project.tracks.remove(track)
+                # Anything ducking to it loses its trigger rather than leaving
+                # a reference the project can no longer validate.
+                for other in project.tracks:
+                    if other.sidechain and other.sidechain.source == track.id:
+                        other.sidechain = None
             elif action.kind == "duplicate_track":
                 keys(p, {"name"})
                 new = track.model_copy(deep=True)
@@ -389,6 +412,35 @@ def apply_actions(original: Project, actions: list[Action], selection: dict | No
                 intensity = float(p.get("intensity", 0.6))
                 changes = character_module.character_changes(track.sound, word.lower(), intensity)
                 track.sound = Sound.model_validate({**track.sound.model_dump(), **changes})
+            elif action.kind == "sidechain":
+                keys(p, {"source", "amount", "attack", "release", "curve", "trigger", "shape", "operation"})
+                if p.get("operation") == "remove":
+                    track.sidechain = None
+                    continue
+                settings: dict = {}
+                if "shape" in p:
+                    if p["shape"] not in sidechain_module.SHAPES:
+                        raise Unsupported(f"There is no '{p['shape']}' ducking shape. Available: {', '.join(sidechain_module.SHAPES)}.")
+                    shape = sidechain_module.SHAPES[p["shape"]]
+                    settings = {"amount": shape.amount, "attack": shape.attack, "release": shape.release, "curve": shape.curve}
+                elif track.sidechain:
+                    settings = track.sidechain.model_dump()
+                if "curve" in p and p["curve"] not in sidechain_module.CURVES:
+                    raise Unsupported(f"There is no '{p['curve']}' ducking curve. Available: {', '.join(sidechain_module.CURVES)}.")
+                if "trigger" in p and p["trigger"] not in sidechain_module.TRIGGERS:
+                    raise Unsupported(f"Ducking cannot be triggered by '{p['trigger']}'. Available: {', '.join(sidechain_module.TRIGGERS)}.")
+                source = default_source(project, p.get("source") or settings.get("source"), track)
+                if source.id == track.id:
+                    raise EditError(f"{track.name} cannot duck to itself; name the track that should trigger it")
+                if source.role == "audio":
+                    raise Unsupported(f"{source.name} is a recording, and RDX cannot pick hits out of audio. Duck to a drum or instrument part instead.")
+                explicit = {k: v for k, v in p.items() if k in {"amount", "attack", "release", "curve", "trigger"}}
+                try:
+                    track.sidechain = Sidechain.model_validate({**settings, **explicit, "source": source.id})
+                except ValueError as error:
+                    raise EditError("Those ducking settings are out of range: depth is 0 to 1 and the release is up to 8 beats") from error
+                if findings is not None:
+                    findings.append(f"{track.name} ducks to {source.name}: " + sidechain_module.describe_settings(track.sidechain.amount, track.sidechain.release, track.sidechain.curve, track.sidechain.trigger) + ".")
             elif action.kind == "mix":
                 keys(p, {"volume_db", "delta_db", "pan", "mute", "solo", "name"})
                 changes = dict(p)
@@ -544,6 +596,6 @@ def context(project: Project, track_id: str | None, section_id: str | None) -> d
         active = {name: round(value, 3) for name, value in selected.sound.model_dump().items() if name in {"cutoff", "reverb", "flanger", "chorus", "autopan", "width", "drive"} and value}
         detail["sound"] = active
     return {"tempo": project.tempo, "key": project.key, "scale": project.scale,
-            "tracks": [{"id": t.id, "name": t.name, "role": t.role, "instrument": t.sound.preset, "locked": t.locked, "volume_db": t.volume_db} for t in project.tracks],
+            "tracks": [{"id": t.id, "name": t.name, "role": t.role, "instrument": t.sound.preset, "locked": t.locked, "volume_db": t.volume_db, **({"ducks_to": t.sidechain.source} if t.sidechain else {})} for t in project.tracks],
             "sections": [{"id": s.id, "name": s.name, "bars": s.bars, "energy": s.energy} for s in project.sections],
             "selected": detail}

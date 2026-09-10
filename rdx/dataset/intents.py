@@ -400,14 +400,48 @@ def intents() -> list[Intent]:
         ), lambda scene, rng: ([act("add_track", {"role": "chords", "name": "Strings", "preset": "strings"}), act("harmony", {"from_track": scene.name(scene.selected_role)}, track="Strings", section="selected")], "")),
     ]
 
+    items += [
+        Intent("sidechain_track", (
+            "sidechain the {track} to the kick",
+            "duck the {track} under the kick",
+            "put the {track} under the kick",
+            "the {track} should get out of the way of the kick",
+            "add sidechain compression to the {track} from the drums",
+            "the kick and the {track} are fighting, duck the {track}",
+        ), lambda scene, rng: ([act("sidechain", {"source": "drums", "shape": rng.choice(["pump", "tight", "gentle"])}, track=scene.name(scene.selected_role))], "")),
+        Intent("sidechain_everything", (
+            "I want that pumping sidechain effect",
+            "make the whole thing pump",
+            "sidechain everything to the kick",
+            "give me that pumping trance feel",
+            "everything should breathe with the kick",
+        ), lambda scene, rng: ([act("move", {"name": "pump"})], "")),
+        Intent("sidechain_amount", (
+            "more pump on the {track}",
+            "duck the {track} harder",
+            "the sidechain on the {track} is too subtle",
+            "I want the {track} to disappear under every kick",
+        ), lambda scene, rng: ([act("sidechain", {"shape": "extreme"}, track=scene.name(scene.selected_role))], "")),
+        Intent("sidechain_gentler", (
+            "less pumping on the {track}",
+            "the sidechain is too strong, back it off",
+            "make the ducking on the {track} gentler",
+        ), lambda scene, rng: ([act("sidechain", {"shape": "gentle"}, track=scene.name(scene.selected_role))], "")),
+        Intent("sidechain_remove", (
+            "take the sidechain off the {track}",
+            "stop the {track} pumping",
+            "remove the ducking from the {track}",
+            "I don't want the {track} sidechained any more",
+        ), lambda scene, rng: ([act("sidechain", {"operation": "remove"}, track=scene.name(scene.selected_role))], "")),
+        Intent("sidechain_long", (
+            "a long slow pump on the {track}",
+            "let the {track} swell back in slowly after each kick",
+            "give the {track} that breathing sidechain",
+        ), lambda scene, rng: ([act("sidechain", {"shape": "breathing"}, track=scene.name(scene.selected_role))], "")),
+    ]
+
     # Things RDX genuinely cannot do. It must say so rather than substitute.
     items += [
-        Intent("refuse_sidechain", (
-            "sidechain the pads to the kick",
-            "add sidechain compression from the kick",
-            "duck the bass under the kick",
-            "I want that pumping sidechain effect",
-        ), refuse("RDX has no sidechain compression yet. I can automate a track's level across a section if you want a similar pumping shape.")),
         Intent("refuse_vocoder", (
             "put a vocoder on this",
             "run the lead through a vocoder",

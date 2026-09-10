@@ -135,7 +135,34 @@ def layer(project: Project, track_target: str, *, preset: str = "supersaw", laye
     return actions
 
 
-MOVES = {"buildup": buildup, "drop": drop, "breakdown": breakdown, "fade": fade, "layer": layer}
+def pump(project: Project, *, shape: str = "pump", source: str | None = None, tracks: list[str] | None = None, amount: float | None = None) -> list[Action]:
+    """Duck everything melodic under the kick — the groove of dance music.
+
+    Named tracks win; otherwise every unlocked instrument part gets it, which
+    is what "make it pump" means in practice. Drums keep their own transients.
+    """
+    if tracks:
+        wanted = {str(name).lower() for name in tracks}
+        targets = [t for t in editable(project) if t.id in wanted or t.name.lower() in wanted or t.role in wanted]
+        if not targets:
+            raise ValueError("None of those tracks are available to duck")
+    else:
+        targets = editable(project, MELODIC)
+    if not targets:
+        raise ValueError("There are no instrument parts to duck")
+    settings: dict = {"shape": shape}
+    if source:
+        settings["source"] = source
+    if amount is not None:
+        settings["amount"] = amount
+    return [Action(kind="sidechain", track=track.id, params=dict(settings)) for track in targets]
+
+
+MOVES = {"buildup": buildup, "drop": drop, "breakdown": breakdown, "fade": fade, "layer": layer, "pump": pump}
+
+# Moves that change how tracks behave everywhere rather than inside one
+# section, so the engine must not hand them a section to work in.
+WHOLE_TRACK_MOVES = {"pump"}
 
 DESCRIPTIONS = {
     "buildup": "opens the filters across the section, swells the level, rolls the snare and sweeps a riser in",
@@ -143,4 +170,5 @@ DESCRIPTIONS = {
     "breakdown": "takes the drums and bass out and leaves the harmony in a lot of space",
     "fade": "brings every track down together over the length you choose",
     "layer": "copies a part onto a new track with a different sound so the two play together",
+    "pump": "ducks every instrument part under the kick so the track breathes with the beat",
 }

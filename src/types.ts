@@ -51,6 +51,16 @@ export interface Automation {
   section_id: string;
   points: [number, number][];
 }
+export interface Sidechain {
+  /** The id of the track whose notes trigger the duck. */
+  source: string;
+  /** Depth as a fraction of the level: 0.75 leaves a quarter of it. */
+  amount: number;
+  attack: number;
+  release: number;
+  curve: string;
+  trigger: string;
+}
 export interface Track {
   id: string;
   name: string;
@@ -62,6 +72,7 @@ export interface Track {
   solo: boolean;
   locked: boolean;
   sound: Sound;
+  sidechain: Sidechain | null;
   clips: Clip[];
   automation: Automation[];
 }

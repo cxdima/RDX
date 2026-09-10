@@ -171,6 +171,11 @@ function Slider({
   );
 }
 
+/** Ducking depth as the decibels a producer reads, matching depth_db in Python. */
+function duckLabel(amount: number) {
+  return `${(20 * Math.log10(Math.max(1 - amount, 1e-4))).toFixed(1)} dB`;
+}
+
 function Meter({
   trackId,
   vertical = false,
@@ -1541,6 +1546,60 @@ export default function App() {
                       )
                     }
                   />
+                  <div className="channel-duck">
+                    <label className="parameter">
+                      <span>
+                        duck to
+                        {t.sidechain && (
+                          <output>{duckLabel(t.sidechain.amount)}</output>
+                        )}
+                      </span>
+                      <select
+                        aria-label={`${t.name} ducking source`}
+                        value={t.sidechain?.source ?? ""}
+                        disabled={busy || !!proposal || t.locked}
+                        onChange={(e) =>
+                          void action(
+                            "sidechain",
+                            e.target.value
+                              ? { source: e.target.value, shape: "pump" }
+                              : { operation: "remove" },
+                            e.target.value
+                              ? `${t.name} ducks to ${active.tracks.find((o) => o.id === e.target.value)?.name}`
+                              : `${t.name} ducking off`,
+                            t.id,
+                          )
+                        }
+                      >
+                        <option value="">nothing</option>
+                        {active.tracks
+                          .filter((o) => o.id !== t.id && o.role !== "audio")
+                          .map((o) => (
+                            <option key={o.id} value={o.id}>
+                              {o.name}
+                            </option>
+                          ))}
+                      </select>
+                    </label>
+                    {t.sidechain && (
+                      <Slider
+                        label={`${t.name} ducking depth`}
+                        value={t.sidechain.amount}
+                        min={0}
+                        max={1}
+                        step={0.01}
+                        disabled={busy || !!proposal || t.locked}
+                        onCommit={(value) =>
+                          void action(
+                            "sidechain",
+                            { amount: value },
+                            `${t.name} ducking depth`,
+                            t.id,
+                          )
+                        }
+                      />
+                    )}
+                  </div>
                 </section>
               ))}
               <section className="channel-strip master-strip">

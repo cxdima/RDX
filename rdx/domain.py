@@ -72,6 +72,22 @@ class Sound(Model):
     glide: float = Field(default=0, ge=0, le=0.5)
 
 
+class Sidechain(Model):
+    """Ducking keyed off another track's notes. See rdx/musical/sidechain.py.
+
+    `source` is always a resolved track id by the time it is stored, so the
+    reference survives a rename. `amount` is depth as a fraction of the level:
+    0.75 leaves a quarter of it, which is 12 dB down.
+    """
+
+    source: str = Field(min_length=1, max_length=40)
+    amount: float = Field(default=0.75, ge=0, le=1)
+    attack: float = Field(default=0.02, ge=0, le=1)
+    release: float = Field(default=0.95, gt=0, le=8)
+    curve: Literal["exponential", "linear", "smooth"] = "exponential"
+    trigger: Literal["kick", "snare", "clap", "rim", "hat", "all"] = "kick"
+
+
 class Automation(Model):
     parameter: Literal["cutoff", "resonance", "volume_db", "pan", "reverb", "flanger", "chorus"]
     section_id: str
@@ -98,6 +114,7 @@ class Track(Model):
     solo: bool = False
     locked: bool = False
     sound: Sound = Field(default_factory=Sound)
+    sidechain: Sidechain | None = None
     clips: list[Clip] = Field(default_factory=list, max_length=64)
     automation: list[Automation] = Field(default_factory=list, max_length=64)
 
@@ -128,7 +145,13 @@ class Project(Model):
         if sum(s.bars for s in self.sections) > 256:
             raise ValueError("This version supports arrangements up to 256 bars")
         bars = {s.id: s.bars for s in self.sections}
+        track_ids = {t.id for t in self.tracks}
         for track in self.tracks:
+            if track.sidechain:
+                if track.sidechain.source == track.id:
+                    raise ValueError("A track cannot duck to itself")
+                if track.sidechain.source not in track_ids:
+                    raise ValueError("Ducking refers to a track that is no longer in the project")
             expected = "drumkit" if track.role == "drums" else "audio" if track.role == "audio" else None
             if expected and track.sound.preset != expected or not expected and track.sound.preset in {"drumkit", "audio"}:
                 raise ValueError("Instrument preset does not match its track type")
@@ -152,7 +175,7 @@ class Project(Model):
 
 
 class Action(Model):
-    kind: Literal["project", "compose", "drums", "kit", "transpose", "rhythm", "sound", "character", "harmony", "move", "mix", "arrange", "master", "notes", "add_track", "remove_track", "duplicate_track", "protect", "automation"]
+    kind: Literal["project", "compose", "drums", "kit", "transpose", "rhythm", "sound", "character", "harmony", "move", "mix", "arrange", "master", "notes", "add_track", "remove_track", "duplicate_track", "protect", "automation", "sidechain"]
     track: str | None = None
     section: str | None = None
     params: dict = Field(default_factory=dict)

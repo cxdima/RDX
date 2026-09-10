@@ -3,6 +3,7 @@ import type { Project } from "../types";
 import { createKit } from "./drums";
 import { createChain, ready } from "./effects";
 import { createVoice } from "./instruments";
+import { duckingPoints, sourceNotes, triggerBeats } from "./sidechain";
 
 type Disposable = { dispose(): unknown };
 
@@ -86,8 +87,20 @@ export class StudioAudio {
       this.channels.set(track.id, channel);
       this.meters.set(track.id, trackMeter);
 
+      // Ducking sits before the channel so it multiplies the fader rather
+      // than fighting a volume automation lane for the same parameter.
+      const duck = track.sidechain
+        ? new Tone.Gain(1).connect(channel)
+        : undefined;
+      if (duck) this.nodes.push(duck);
+
       const animated = new Set(track.automation.map((lane) => lane.parameter));
-      const chain = createChain(track.sound, channel, animated, secondsPerBeat);
+      const chain = createChain(
+        track.sound,
+        duck ?? channel,
+        animated,
+        secondsPerBeat,
+      );
       this.nodes.push(...chain.nodes);
       await ready(chain);
       if (generation !== this.generation) return;
@@ -136,6 +149,28 @@ export class StudioAudio {
                 );
             },
             (clipOffset + note.start) * secondsPerBeat,
+          );
+        }
+      }
+
+      if (duck && track.sidechain) {
+        const setting = track.sidechain;
+        for (const section of project.sections) {
+          const beats = triggerBeats(
+            sourceNotes(setting, project.tracks, section.id),
+            setting.trigger,
+          );
+          const points = duckingPoints(beats, section.bars * 4, setting);
+          transport.schedule(
+            (time) => {
+              duck.gain.cancelScheduledValues(time);
+              points.forEach(([beat, gain], index) => {
+                const at = time + beat * secondsPerBeat;
+                if (index === 0) duck.gain.setValueAtTime(gain, at);
+                else duck.gain.linearRampToValueAtTime(gain, at);
+              });
+            },
+            (offsets.get(section.id) || 0) * secondsPerBeat,
           );
         }
       }
