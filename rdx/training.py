@@ -25,14 +25,19 @@ def main(argv: list[str] | None = None):
     parser.add_argument("--batch-size", type=int, default=2)
     parser.add_argument("--layers", type=int, default=8)
     parser.add_argument("--rank", type=int, default=16)
-    parser.add_argument("--learning-rate", type=float, default=1e-4)
+    parser.add_argument("--learning-rate", type=float, default=5e-5)
+    parser.add_argument("--warmup", type=int, default=40)
     # Examples cluster near 1616 tokens; a tight cap keeps peak memory down.
     parser.add_argument("--max-seq-length", type=int, default=1536)
     parser.add_argument("--no-grad-checkpoint", action="store_true")
     args = parser.parse_args(argv)
     directory = DATA / "training"
     directory.mkdir(parents=True, exist_ok=True)
-    config = {"model": str(MODEL), "train": True, "data": str(directory), "fine_tune_type": "lora", "num_layers": args.layers, "batch_size": args.batch_size, "iters": args.iters, "val_batches": 8, "learning_rate": args.learning_rate, "steps_per_report": 20, "steps_per_eval": 100, "adapter_path": str(ADAPTER), "save_every": 100, "max_seq_length": args.max_seq_length, "grad_checkpoint": not args.no_grad_checkpoint, "mask_prompt": True, "seed": 2026, "lora_parameters": {"rank": args.rank, "dropout": 0.0, "scale": 32.0}}
+    config = {
+        "model": str(MODEL), "train": True, "data": str(directory), "fine_tune_type": "lora", "num_layers": args.layers, "batch_size": args.batch_size, "iters": args.iters, "val_batches": 8, "learning_rate": args.learning_rate,
+        # Constant 1e-4 diverged at iteration 120 (loss 0.374 -> 6.848).
+        # Warm up, then decay, so a late batch cannot throw the run.
+        "lr_schedule": {"name": "cosine_decay", "warmup": args.warmup, "warmup_init": 1e-6, "arguments": [args.learning_rate, args.iters, args.learning_rate / 10]}, "steps_per_report": 20, "steps_per_eval": 100, "adapter_path": str(ADAPTER), "save_every": 100, "max_seq_length": args.max_seq_length, "grad_checkpoint": not args.no_grad_checkpoint, "mask_prompt": True, "seed": 2026, "lora_parameters": {"rank": args.rank, "dropout": 0.0, "scale": 32.0}}
     import yaml
     config_path = directory / "train.yaml"
     config_path.write_text(yaml.safe_dump(config))
