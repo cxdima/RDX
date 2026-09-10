@@ -64,6 +64,7 @@ LIMITS = {
     "crest": 7.0,  # dB of peak over RMS; below this it is squashed
     "buried": 20.0,  # dB below the loudest part before it disappears
     "loudness": -8.0,  # LUFS; above this a limiter is doing the arranging
+    "quiet": -24.0,  # LUFS; below this the mix is not using the room it has
 }
 
 
@@ -402,6 +403,18 @@ def findings(mix: Mix, project: Project) -> list[Finding]:
         for track in mix.tracks:
             if loudest.rms_db - track.rms_db > LIMITS["buried"] and track.energy > 0:
                 found.append(Finding("buried", f"{track.name} is buried", f"It sits {round(loudest.rms_db - track.rms_db)} dB below {loudest.name}. Anything more than {round(LIMITS['buried'])} dB down stops being part of the music.", [track.track_id], [{"kind": "mix", "track": track.track_id, "params": {"delta_db": 4}}]))
+
+    if mix.loudness_lufs < LIMITS["quiet"] and mix.tracks:
+        # Not a mix problem so much as gain staging: everything is balanced,
+        # and all of it is 20 dB further down than it needs to be.
+        lift = round(min(8.0, LIMITS["quiet"] + 6 - mix.loudness_lufs), 1)
+        found.append(Finding(
+            "quiet",
+            "The whole mix is very quiet",
+            f"Integrated loudness is {round(mix.loudness_lufs, 1)} LUFS, against about -14 where streaming sits. The balance between the parts is fine; there is just {round(-14 - mix.loudness_lufs)} dB of unused room above it.",
+            [t.track_id for t in mix.tracks],
+            [{"kind": "mix", "track": t.track_id, "params": {"delta_db": lift}} for t in mix.tracks],
+        ))
 
     if mix.loudness_lufs > LIMITS["loudness"]:
         quieter = round(max(-30.0, project.master.volume_db - (mix.loudness_lufs - LIMITS["loudness"])), 1)

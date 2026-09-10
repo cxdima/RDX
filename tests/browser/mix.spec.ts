@@ -64,6 +64,9 @@ test("the studio renders the mix, measures it, and reports what it found", async
   expect(shares.length).toBeGreaterThanOrEqual(5);
   expect(shares.reduce((sum, v) => sum + v, 0)).toBeGreaterThan(90);
 
+  // Captured with the reading on screen rather than after it is spent.
+  await page.screenshot({ path: "artifacts/studio-mix-analysis.png" });
+
   const findings = page.locator(".mix-findings li");
   if (await findings.count()) {
     // Whatever it found, it has to be actionable and it has to cite a number.
@@ -84,6 +87,5 @@ test("the studio renders the mix, measures it, and reports what it found", async
     ).toBeVisible();
   }
 
-  await page.screenshot({ path: "artifacts/studio-mix-analysis.png" });
   expect(errors).toEqual([]);
 });

@@ -144,6 +144,8 @@ them — *"31% of the energy sits between 200 and 400 Hz"* — and each one prop
 an edit RDX can actually make. **It refuses to correct a mix it has not
 measured.**
 
+![Mix analysis: loudness, dynamic range, band balance and what to do about it](docs/studio-mix-analysis.png)
+
 **Arrangement and mixing.** Sections you can add, duplicate, resize and reorder;
 track duplication, naming and protection; a mixer with real meters; master
 compression and limiting; automation for filter, resonance, level, pan, reverb,
@@ -255,11 +257,21 @@ real projects. `RDX_PORT` picks the first port to try.
 Tests assert musical results, not that a function returned: that four-on-the-
 floor lands on every beat, that a double clap is two hits a thirty-second apart,
 that a snare roll accelerates, that voice leading glides rather than leaps, that
-*warm* closes the filter, that a ducked bass is 12 dB down when the kick lands,
-and that unsupported requests raise rather than approximate. Two tests hold the
-Python and TypeScript audio implementations together by comparing their output
-directly, and a browser test renders real audio and measures it — because
-compiling is not evidence that the speakers do anything.
+*warm* closes the filter, that a seventh comes from the key rather than from the
+triad, that shaping a phrase cannot take it out of the key, and that unsupported
+requests raise rather than approximate.
+
+Three tests go further than reading the code:
+
+- The Python and TypeScript ducking implementations are compared **point for
+  point** by running the real TypeScript through Node. A table comparison alone
+  missed a rounding difference — Python rounds halves to even, JavaScript rounds
+  them up — that moved the two curves apart.
+- A browser test renders actual audio and measures it, asserting a ducked bass
+  drops away under every kick. Compiling is not evidence that the speakers do
+  anything.
+- Another renders a mix through the studio, uploads the stems, and checks the
+  reading that comes back. That one has already caught two real bugs.
 
 Model weights, recordings, databases and test artifacts are excluded from Git by
 design. Everything else — source, tests, docs, the trained adapter and the data

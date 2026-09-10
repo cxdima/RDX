@@ -237,3 +237,18 @@ def test_the_summary_reads_as_sentences_not_as_numbers(project, names, ids):
     text = mixdown.summarise(mix, mixdown.findings(mix, project))
     assert "LUFS" in text and "dynamic range" in text
     assert "The mix is muddy" in text
+
+
+def test_a_mix_far_below_streaming_level_is_reported_as_quiet(project, names, ids):
+    stems = {ids["bass"]: band_noise(50, 200, 0.004), ids["chords"]: band_noise(500, 3000, 0.003)}
+    mix = mixdown.analyse(stems, RATE, names)
+    quiet = [f for f in mixdown.findings(mix, project) if f.problem == "quiet"]
+    assert quiet, f"{mix.loudness_lufs} LUFS should read as quiet"
+    assert all(a["params"]["delta_db"] > 0 for a in quiet[0].actions), "the fix is to turn it up"
+    assert len(quiet[0].actions) == len(stems), "every part goes up together, so the balance is kept"
+
+
+def test_a_mix_at_a_normal_level_is_not_reported_as_quiet(project, names, ids):
+    stems = {ids["bass"]: band_noise(50, 200, 0.35), ids["chords"]: band_noise(500, 3000, 0.3)}
+    mix = mixdown.analyse(stems, RATE, names)
+    assert "quiet" not in {f.problem for f in mixdown.findings(mix, project)}
