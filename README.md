@@ -105,8 +105,12 @@ handshake and transfer have never been confirmed**. Treat that integration as
 experimental. It packages correctly against Live 12.4.5.
 
 Live 12.4.5 does add `Track.insert_device`, so native Live instruments and
-effects are reachable in principle — see [RDX_PLAN.md](RDX_PLAN.md). Writing
-automation envelopes into Live is still not in the documented API.
+effects are reachable in principle. Plugins are not: the API inserts native
+devices only, so Serum, LFO Tool and the rest would be loaded once by hand in a
+template Set, after which RDX can read and drive their automatable parameters.
+Writing automation envelopes into Live is still not in the documented API. The
+design and its order of work are in [RDX_PLAN.md](RDX_PLAN.md); none of it is
+implemented.
 
 Other current limits: 4/4 only; up to 24 tracks, 16 sections, 256 bars; one clip
 per track and section; hum and rhythm analysis capped at 30 seconds; imports
