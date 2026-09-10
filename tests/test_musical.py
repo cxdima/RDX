@@ -15,7 +15,7 @@ import pytest
 
 from rdx.domain import Action, Clip, DRUM_MAP, Note, Sound
 from rdx.engine import EditError, Unsupported, apply_actions, starter_project
-from rdx.musical import drums, harmony, moves, sidechain
+from rdx.musical import drums, harmony, melody, moves, sidechain
 from rdx.musical.character import CHARACTERS, character_changes
 from rdx.musical.describe import describe
 
@@ -519,3 +519,97 @@ def test_the_ducking_curve_is_identical_in_both_languages(tmp_path):
     for name, shape in sidechain.SHAPES.items():
         assert sidechain.ducking_points(beats, 8, amount=shape.amount, attack=shape.attack, release=shape.release, curve=shape.curve) == mirrored[name], name
     assert sidechain.ducking_points([0.0, 0.5, 0.75], 4, amount=0.8, attack=0.02, release=2.0, curve="linear") == mirrored["crowded"]
+
+
+# --- phrase shape ----------------------------------------------------------
+
+
+def line(pitches, step=0.5, duration=0.4):
+    return [Note(pitch=p, start=round(i * step, 4), duration=duration, velocity=90) for i, p in enumerate(pitches)]
+
+
+def test_making_space_removes_notes_and_keeps_the_downbeats():
+    busy = line([69, 71, 72, 74, 76, 74, 72, 71])
+    spaced = melody.space(busy, amount=0.5, length=4)
+    assert len(spaced) < len(busy)
+    assert any(abs(n.start) < 1e-6 for n in spaced), "the downbeat must survive"
+    assert sum(n.duration for n in spaced) > sum(n.duration for n in busy) / 2, "survivors are held longer"
+
+
+def test_making_space_never_lets_a_note_run_past_the_next_one():
+    spaced = melody.space(line([69, 71, 72, 74, 76, 74]), amount=0.34, length=3)
+    for first, second in zip(spaced, spaced[1:]):
+        assert first.start + first.duration <= second.start + 1e-6
+
+
+def test_filling_adds_notes_that_stay_in_the_key():
+    sparse = line([69, 76, 72, 74], step=1.0, duration=0.4)
+    filled = melody.fill(sparse, amount=1.0, key="A", scale="minor", length=4)
+    assert len(filled) > len(sparse)
+    for note in filled:
+        assert (note.pitch - 9) % 12 in melody.MINOR, "A minor has no notes outside its scale"
+
+
+def test_a_rising_shape_lifts_the_end_and_leaves_the_opening_alone():
+    phrase = line([69] * 8)
+    risen = melody.shape(phrase, "rise", degrees=3, key="A", scale="minor", length=4)
+    assert risen[0].pitch == 69, "the first note is the idea; it stays"
+    assert risen[-1].pitch > risen[0].pitch, "the phrase should climb"
+    assert [n.pitch for n in risen] == sorted(n.pitch for n in risen), "and climb steadily"
+
+
+def test_a_falling_shape_is_the_mirror_of_a_rising_one():
+    phrase = line([69] * 8)
+    assert melody.shape(phrase, "fall", degrees=3, length=4)[-1].pitch < melody.shape(phrase, "rise", degrees=3, length=4)[-1].pitch
+
+
+def test_an_arch_goes_up_and_comes_back():
+    arched = melody.shape(line([69] * 9), "arch", degrees=4, length=4.5)
+    middle = arched[len(arched) // 2].pitch
+    assert middle > arched[0].pitch and middle > arched[-1].pitch
+
+
+def test_reshaping_a_phrase_never_leaves_the_key():
+    for name in melody.CONTOURS:
+        for note in melody.shape(line([69, 72, 76, 74, 71, 69, 67, 72]), name, degrees=5, key="F", scale="major", length=4):
+            assert (note.pitch - 5) % 12 in melody.MAJOR, name
+
+
+def bars_of(*bars):
+    """Notes on the beat, a bar at a time, so repeats line up exactly."""
+    return [Note(pitch=p, start=float(bar * 4 + beat), duration=0.4, velocity=90) for bar, pitches in enumerate(bars) for beat, p in enumerate(pitches)]
+
+
+def test_repetition_is_measured_not_guessed():
+    assert melody.repetition(bars_of([69, 72, 76, 72], [69, 72, 76, 72]), 2) == 1.0
+    assert melody.repetition(bars_of([69, 72, 76, 72], [71, 74, 77, 74]), 2) == 0.0
+
+
+def test_varying_changes_the_repeats_and_protects_the_first_statement():
+    notes = bars_of(*([[69, 72, 76, 72]] * 4))
+    varied = melody.vary(notes, 4, key="A", scale="minor", amount=1.0, seed=5)
+    assert [n.pitch for n in varied[:4]] == [69, 72, 76, 72], "the opening bar is the idea"
+    assert melody.repetition(varied, 4) < melody.repetition(notes, 4)
+
+
+def test_an_unknown_phrase_shape_is_refused_by_name(project, selection):
+    with pytest.raises(Unsupported, match="arch"):
+        apply_actions(project, [Action(kind="phrase", track="lead", section="Main", params={"shape": "zigzag"})], selection)
+
+
+def test_shaping_a_phrase_through_the_engine_keeps_it_inside_the_section(project, selection):
+    after = apply_actions(project, [Action(kind="phrase", track="lead", section="Main", params={"operation": "fill", "amount": 1.0})], selection)
+    main = next(s for s in after.sections if s.name == "Main")
+    clip = next(c for c in next(t for t in after.tracks if t.role == "lead").clips if c.section_id == main.id)
+    assert clip.notes and all(n.start + n.duration <= main.bars * 4 + 1e-9 for n in clip.notes)
+
+
+def test_phrase_shaping_is_refused_on_drums(project, selection):
+    with pytest.raises(EditError, match="melodic"):
+        apply_actions(project, [Action(kind="phrase", track="drums", section="Main", params={"operation": "space"})], selection)
+
+
+def test_the_phrase_report_says_what_it_did(project, selection):
+    findings: list[str] = []
+    apply_actions(project, [Action(kind="phrase", track="lead", section="Main", params={"operation": "space", "amount": 0.5})], selection, findings)
+    assert "notes" in findings[0] and "Lead" in findings[0]

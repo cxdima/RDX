@@ -401,6 +401,45 @@ def intents() -> list[Intent]:
     ]
 
     items += [
+        Intent("phrase_space", (
+            "more space between the notes on the {track}",
+            "the {track} is too busy",
+            "there's too much going on in the {track}",
+            "thin the {track} out a bit",
+            "give the {track} some room to breathe",
+            "fewer notes in the {track} please",
+        ), lambda scene, rng: ([act("phrase", {"operation": "space", "amount": rng.choice([0.3, 0.4, 0.5])}, track=scene.name(scene.selected_role), section="selected")], "")),
+        Intent("phrase_fill", (
+            "the {track} needs more movement",
+            "add some notes in between on the {track}",
+            "the {track} feels empty, fill it in",
+            "busier {track} please",
+        ), lambda scene, rng: ([act("phrase", {"operation": "fill", "amount": rng.choice([0.4, 0.6, 0.8])}, track=scene.name(scene.selected_role), section="selected")], "")),
+        Intent("phrase_rise", (
+            "the melody should rise at the end",
+            "let the {track} climb towards the end",
+            "the end of the phrase should go up",
+            "make the {track} lift into the next part",
+        ), lambda scene, rng: ([act("phrase", {"operation": "shape", "shape": "rise", "degrees": rng.choice([2, 3])}, track=scene.name(scene.selected_role), section="selected")], "")),
+        Intent("phrase_fall", (
+            "the melody should come down at the end",
+            "let the {track} settle downwards",
+            "the phrase should fall away at the end",
+        ), lambda scene, rng: ([act("phrase", {"operation": "shape", "shape": "fall", "degrees": 2}, track=scene.name(scene.selected_role), section="selected")], "")),
+        Intent("phrase_arch", (
+            "the {track} should lift in the middle and come back",
+            "give the melody an arch",
+            "let the phrase peak halfway through",
+        ), lambda scene, rng: ([act("phrase", {"operation": "shape", "shape": "arch", "degrees": 3}, track=scene.name(scene.selected_role), section="selected")], "")),
+        Intent("phrase_vary", (
+            "the {track} is too repetitive",
+            "it keeps repeating, change it up",
+            "the {track} is playing the same thing over and over",
+            "vary the {track} so it doesn't loop",
+        ), lambda scene, rng: ([act("phrase", {"operation": "vary", "amount": rng.choice([0.4, 0.6])}, track=scene.name(scene.selected_role), section="selected")], "")),
+    ]
+
+    items += [
         Intent("sidechain_track", (
             "sidechain the {track} to the kick",
             "duck the {track} under the kick",

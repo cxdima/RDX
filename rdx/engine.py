@@ -9,6 +9,8 @@ from .domain import Action, Automation, Clip, Master, MELODIC_PRESETS, Note, Pro
 from .musical import character as character_module
 from .musical import drums as drums_module
 from .musical import harmony as harmony_module
+from .musical import melody as melody_module
+from .musical import mixdown as mixdown_module
 from .musical import moves as moves_module
 from .musical import sidechain as sidechain_module
 
@@ -31,9 +33,9 @@ def keys(params: dict, allowed: set[str]):
         raise EditError(f"Unsupported settings: {', '.join(sorted(unknown))}")
 
 
-NUMERIC_PARAMS = {"tempo", "seed", "density", "variation", "semitones", "start", "end", "grid", "swing", "humanize", "velocity", "cutoff", "resonance", "attack", "release", "reverb", "delay", "drive", "low", "mid", "high", "volume_db", "delta_db", "pan", "bars", "energy", "index", "ceiling", "compression", "audio_offset", "chorus", "flanger", "phaser", "autopan", "motion_rate", "width", "glide", "intensity", "span", "voices", "roll_from_bar", "octave", "cut_bars", "from_cutoff", "to_cutoff", "start_beat", "beats", "to_db", "amount"}
+NUMERIC_PARAMS = {"tempo", "seed", "density", "variation", "semitones", "start", "end", "grid", "swing", "humanize", "velocity", "cutoff", "resonance", "attack", "release", "reverb", "delay", "drive", "low", "mid", "high", "volume_db", "delta_db", "pan", "bars", "energy", "index", "ceiling", "compression", "audio_offset", "chorus", "flanger", "phaser", "autopan", "motion_rate", "width", "glide", "intensity", "span", "voices", "roll_from_bar", "octave", "cut_bars", "from_cutoff", "to_cutoff", "start_beat", "beats", "to_db", "amount", "degrees"}
 BOOLEAN_PARAMS = {"locked", "last_note", "mute", "solo", "crash", "fill", "roll", "riser"}
-TEXT_PARAMS = {"name", "role", "key", "scale", "pattern", "preset", "operation", "parameter", "note_id", "character", "kit", "from_track", "track", "layer_name", "source", "curve", "trigger", "shape"}
+TEXT_PARAMS = {"name", "role", "key", "scale", "pattern", "preset", "operation", "parameter", "note_id", "character", "kit", "from_track", "track", "layer_name", "source", "curve", "trigger", "shape", "problem"}
 
 
 def parameter_types(params: dict):
@@ -224,12 +226,36 @@ def starter_project() -> Project:
     return Project.model_validate(project.model_dump())
 
 
-def apply_actions(original: Project, actions: list[Action], selection: dict | None = None, findings: list[str] | None = None, _depth: int = 0) -> Project:
+def apply_actions(original: Project, actions: list[Action], selection: dict | None = None, findings: list[str] | None = None, measured: dict | None = None, _depth: int = 0) -> Project:
     project = original.model_copy(deep=True)
     originally_locked = {t.id for t in original.tracks if t.locked}
     for action in actions:
         p = action.params
         parameter_types(p)
+        if action.kind == "mix_fix":
+            keys(p, {"problem"})
+            if _depth:
+                raise EditError("A mix correction cannot be nested inside another edit")
+            if not measured:
+                # RDX will not guess at a mix problem. This is the one kind of
+                # request where the honest answer is "let me listen first".
+                raise EditError("Analyse the mix before asking me to fix it — I will not guess at a problem I have not measured. Use Analyse the mix in the mixer.")
+            mix = mixdown_module.Mix.from_dict(measured)
+            available = mixdown_module.findings(mix, project)
+            if not available:
+                raise EditError("Nothing in this mix measures as a problem, so there is nothing for me to correct.")
+            wanted = p.get("problem")
+            chosen = available if wanted in (None, "", "all") else [f for f in available if f.problem == wanted]
+            if not chosen:
+                names = ", ".join(sorted({f.problem for f in available}))
+                raise Unsupported(f"The mix does not measure as '{wanted}'. What it does show: {names}.")
+            expanded = [Action.model_validate(a) for f in chosen for a in f.actions]
+            if not expanded:
+                raise EditError("There is no edit RDX can make for that measurement")
+            if findings is not None:
+                findings.extend(f"{f.headline}. {f.detail}" for f in chosen)
+            project = apply_actions(project, expanded, selection, None, measured, _depth + 1)
+            continue
         if action.kind == "move":
             keys(p, {"name", "intensity", "roll", "riser", "cut_bars", "from_cutoff", "to_cutoff", "track", "preset", "layer_name", "octave", "character", "keep", "start_beat", "beats", "to_db", "shape", "source", "tracks", "amount"})
             if _depth:
@@ -252,7 +278,7 @@ def apply_actions(original: Project, actions: list[Action], selection: dict | No
                 raise
             except ValueError as error:
                 raise EditError(str(error)) from error
-            project = apply_actions(project, expanded, selection, findings, _depth + 1)
+            project = apply_actions(project, expanded, selection, findings, measured, _depth + 1)
             continue
         if action.kind == "project":
             keys(p, {"name", "tempo", "key", "scale", "seed"})
@@ -548,6 +574,42 @@ def apply_actions(original: Project, actions: list[Action], selection: dict | No
                             targets = [max(targets, key=lambda n: n.start)]
                         for note in targets:
                             note.pitch += delta
+                    elif action.kind == "phrase":
+                        keys(p, {"operation", "amount", "shape", "degrees"})
+                        if track.role == "drums":
+                            raise EditError("Phrase shaping is for melodic parts; drums are shaped with kit and rhythm")
+                        operation = p.get("operation", "shape")
+                        length = section.bars * 4
+                        before = len(clip.notes)
+                        try:
+                            if operation == "space":
+                                clip.notes = melody_module.space(clip.notes, amount=float(p.get("amount", 0.4)), length=length)
+                            elif operation == "fill":
+                                clip.notes = melody_module.fill(clip.notes, amount=float(p.get("amount", 0.5)), key=project.key, scale=project.scale, length=length, seed=project.seed)
+                            elif operation == "vary":
+                                clip.notes = melody_module.vary(clip.notes, section.bars, key=project.key, scale=project.scale, amount=float(p.get("amount", 0.5)), seed=project.seed)
+                            elif operation == "shape":
+                                name = p.get("shape")
+                                if name not in melody_module.CONTOURS:
+                                    raise Unsupported(f"There is no '{name}' phrase shape. Available: {', '.join(melody_module.CONTOURS)}.")
+                                degrees = p.get("degrees", 2)
+                                if type(degrees) is not int:
+                                    raise EditError("Reshaping moves a phrase by a whole number of scale degrees")
+                                clip.notes = melody_module.shape(clip.notes, name, degrees=degrees, key=project.key, scale=project.scale, length=length)
+                            else:
+                                raise EditError("Unknown phrase operation. Use space, fill, vary or shape.")
+                        except Unsupported:
+                            raise
+                        except ValueError as error:
+                            raise EditError(str(error)) from error
+                        clip.notes = [n for n in clip.notes if n.start < length]
+                        for note in clip.notes:
+                            note.duration = min(note.duration, length - note.start)
+                        if findings is not None:
+                            if operation == "shape":
+                                findings.append(f"{track.name} in {section.name}: the phrase now {melody_module.CONTOURS[p.get('shape')].meaning}.")
+                            else:
+                                findings.append(f"{track.name} in {section.name}: {before} notes to {len(clip.notes)}.")
                     elif action.kind == "rhythm":
                         keys(p, {"grid", "swing", "humanize", "velocity"})
                         grid = float(p.get("grid", 0.25))
@@ -579,7 +641,7 @@ def apply_actions(original: Project, actions: list[Action], selection: dict | No
     return validated(project)
 
 
-def context(project: Project, track_id: str | None, section_id: str | None) -> dict:
+def context(project: Project, track_id: str | None, section_id: str | None, measured: dict | None = None) -> dict:
     """The compact picture of the project the model gets to reason over.
 
     It names the instrument on each track and how full the selected part is,
@@ -595,6 +657,11 @@ def context(project: Project, track_id: str | None, section_id: str | None) -> d
         detail["notes"] = len(clip.notes) if clip else 0
         active = {name: round(value, 3) for name, value in selected.sound.model_dump().items() if name in {"cutoff", "reverb", "flanger", "chorus", "autopan", "width", "drive"} and value}
         detail["sound"] = active
+    if measured:
+        # Only the names of the measured problems, not the numbers. The model
+        # picks the operation; the module owns what the measurement means.
+        problems = sorted({f.problem for f in mixdown_module.findings(mixdown_module.Mix.from_dict(measured), project)})
+        detail["mix_measured"] = problems or ["nothing"]
     return {"tempo": project.tempo, "key": project.key, "scale": project.scale,
             "tracks": [{"id": t.id, "name": t.name, "role": t.role, "instrument": t.sound.preset, "locked": t.locked, "volume_db": t.volume_db, **({"ducks_to": t.sidechain.source} if t.sidechain else {})} for t in project.tracks],
             "sections": [{"id": s.id, "name": s.name, "bars": s.bars, "energy": s.energy} for s in project.sections],

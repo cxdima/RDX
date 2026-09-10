@@ -131,3 +131,76 @@ def test_accepting_a_refusal_does_not_write_history(client):
     assert kept.json()["revision"] == project["revision"]
     after = client.get(f"/api/projects/{project['id']}/history").json()
     assert after["entries"] == before["entries"]
+
+
+def upload_stem(client, samples, rate=44100):
+    """Push a rendered stem through the same endpoint the studio uses."""
+    import numpy as np
+    import soundfile as sf
+
+    buffer = io.BytesIO()
+    sf.write(buffer, np.asarray(samples, dtype="float32"), rate, format="WAV", subtype="PCM_16")
+    result = client.post("/api/renders", files={"file": ("stem.wav", buffer.getvalue(), "audio/wav")})
+    assert result.status_code == 200, result.text
+    return result.json()["id"]
+
+
+def muddy_stems(client, project):
+    """A mix with far too much between 200 and 400 Hz, on purpose."""
+    import numpy as np
+
+    rate, seconds = 44100, 3.0
+    t = np.arange(int(rate * seconds)) / rate
+    stems = {}
+    for track in project["tracks"]:
+        frequencies = [240, 300, 360] if track["role"] in {"chords", "lead"} else [60, 90]
+        wave = sum(np.sin(2 * np.pi * f * t) for f in frequencies) / len(frequencies) * 0.4
+        stems[track["id"]] = upload_stem(client, np.repeat(wave[:, None], 2, axis=1), rate)
+    return stems
+
+
+def test_mix_is_measured_from_real_audio_and_pinned_to_its_revision(client):
+    project = client.get(f'/api/projects/{client.get("/api/projects").json()[0]["id"]}').json()
+    url = f'/api/projects/{project["id"]}'
+    assert client.get(url + "/mix").json()["measured"] is False
+
+    report = client.post(url + "/mix", json={"revision": 0, "stems": muddy_stems(client, project)})
+    assert report.status_code == 200, report.text
+    body = report.json()
+    assert body["measured"] and body["revision"] == 0
+    assert "muddy" in {f["problem"] for f in body["findings"]}
+    assert "LUFS" in body["summary"]
+    assert client.get(url + "/mix").json()["findings"] == body["findings"]
+
+    # Editing the arrangement invalidates it: a measurement of different music
+    # is worse than none, because it looks current.
+    client.post(url + "/edits", json={"revision": 0, "actions": [{"kind": "project", "params": {"tempo": 128}}]})
+    assert client.get(url + "/mix").json()["measured"] is False
+
+
+def test_a_measured_problem_can_be_corrected_through_chat(client, monkeypatch):
+    project = client.get(f'/api/projects/{client.get("/api/projects").json()[0]["id"]}').json()
+    url = f'/api/projects/{project["id"]}'
+    client.post(url + "/mix", json={"revision": 0, "stems": muddy_stems(client, project)})
+    monkeypatch.setattr(server.model, "generate", lambda *args: Plan(actions=[Action(kind="mix_fix", params={"problem": "muddy"})]))
+    proposed = client.post(url + "/chat", json={"revision": 0, "message": "the mix is muddy"}).json()
+    assert "muddy" in proposed["summary"].lower()
+    assert proposed["preview"] != project
+
+
+def test_chat_refuses_a_mix_complaint_it_has_not_measured(client, monkeypatch):
+    project = client.get("/api/projects").json()[0]
+    url = f'/api/projects/{project["id"]}'
+    monkeypatch.setattr(server.model, "generate", lambda *args: Plan(actions=[Action(kind="mix_fix", params={"problem": "muddy"})]))
+    result = client.post(url + "/chat", json={"revision": 0, "message": "the mix is muddy"})
+    assert result.status_code == 400
+    assert "not guess" in result.json()["detail"]
+
+
+def test_a_stem_for_an_unknown_track_is_refused(client):
+    project = client.get(f'/api/projects/{client.get("/api/projects").json()[0]["id"]}').json()
+    import numpy as np
+
+    stem = upload_stem(client, np.zeros((44100, 2), dtype="float32"))
+    result = client.post(f'/api/projects/{project["id"]}/mix', json={"revision": 0, "stems": {"deadbeef0000": stem}})
+    assert result.status_code == 400

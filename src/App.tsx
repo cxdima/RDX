@@ -42,6 +42,7 @@ import {
   type Clip,
   type History,
   type Message,
+  type MixReport,
   type Project,
   type Proposal,
   type Sound,
@@ -274,6 +275,7 @@ export default function App() {
   const [recordSeconds, setRecordSeconds] = useState(0);
   const [variation, setVariation] = useState(1);
   const [feedback, setFeedback] = useState("");
+  const [mixReport, setMixReport] = useState<MixReport | null>(null);
   const uploadRef = useRef<HTMLInputElement>(null);
   const archiveRef = useRef<HTMLInputElement>(null);
   const recorderRef = useRef<MediaRecorder | null>(null);
@@ -306,6 +308,14 @@ export default function App() {
       .then(setHistory)
       .catch(() => {});
   }, []);
+  // A measurement is pinned to the revision that produced it, so a stale one
+  // is shown as stale rather than quietly reused for a different arrangement.
+  useEffect(() => {
+    if (!project) return;
+    api<MixReport>(`/projects/${project.id}/mix`)
+      .then(setMixReport)
+      .catch(() => {});
+  }, [project?.id, project?.revision]);
   async function load(id: string) {
     studioAudio.stop();
     setPlaying(false);
@@ -636,6 +646,52 @@ export default function App() {
       setBusy(false);
     }
   }
+  /** Render every track, upload the stems and let the server measure them. */
+  async function analyseMix() {
+    if (!project || busy) return;
+    setBusy(true);
+    setError("");
+    setNotice("Rendering the mix to measure it...");
+    try {
+      const stems: Record<string, string> = {};
+      for (const source of project.tracks) {
+        const solo = {
+          ...project,
+          tracks: [{ ...source, mute: false, solo: false }],
+          master: {
+            ...project.master,
+            volume_db: 0,
+            compression: 0,
+            ceiling: 0,
+          },
+        };
+        stems[source.id] = await uploadRender(await studioAudio.render(solo));
+      }
+      const master = await uploadRender(await studioAudio.render(project));
+      setMixReport(
+        await post<MixReport>(`/projects/${project.id}/mix`, {
+          revision: project.revision,
+          stems,
+          master,
+        }),
+      );
+      setNotice("");
+    } catch (e) {
+      setError((e as Error).message);
+      setNotice("");
+    } finally {
+      setBusy(false);
+    }
+  }
+  async function uploadRender(blob: Blob) {
+    const form = new FormData();
+    form.set("file", new File([blob], "stem.wav", { type: "audio/wav" }));
+    const result = await api<{ id: string }>("/renders", {
+      method: "POST",
+      body: form,
+    });
+    return result.id;
+  }
   async function sendAbleton() {
     if (!project) return;
     setBusy(true);
@@ -654,17 +710,9 @@ export default function App() {
             ceiling: 0,
           },
         };
-        const blob = await studioAudio.render(stemProject);
-        const form = new FormData();
-        form.set(
-          "file",
-          new File([blob], `${source.name}.wav`, { type: "audio/wav" }),
+        stems[source.id] = await uploadRender(
+          await studioAudio.render(stemProject),
         );
-        const result = await api<{ id: string }>("/renders", {
-          method: "POST",
-          body: form,
-        });
-        stems[source.id] = result.id;
       }
       await post(`/projects/${project.id}/ableton`, {
         revision: project.revision,
@@ -1665,6 +1713,78 @@ export default function App() {
                 />
               </section>
             </div>
+            <section className="mix-report">
+              <header>
+                <div>
+                  <h3>Mix analysis</h3>
+                  <p>
+                    RDX renders every track and measures it. It will not name a
+                    problem it has not heard.
+                  </p>
+                </div>
+                <button
+                  className="primary"
+                  disabled={busy || !!proposal}
+                  onClick={() => void analyseMix()}
+                >
+                  {mixReport?.measured && mixReport.revision === active.revision
+                    ? "Measure again"
+                    : "Analyse the mix"}
+                </button>
+              </header>
+              {mixReport?.measured && mixReport.revision === active.revision ? (
+                <>
+                  <div className="mix-numbers">
+                    <span>
+                      <output>{mixReport.mix!.loudness_lufs.toFixed(1)}</output>
+                      LUFS
+                    </span>
+                    <span>
+                      <output>{mixReport.mix!.crest_db.toFixed(1)}</output>
+                      dB dynamic range
+                    </span>
+                    {Object.entries(mixReport.mix!.bands).map(
+                      ([band, share]) => (
+                        <span key={band}>
+                          <output>{Math.round(share * 100)}%</output>
+                          {band}
+                        </span>
+                      ),
+                    )}
+                  </div>
+                  {mixReport.findings?.length ? (
+                    <ul className="mix-findings">
+                      {mixReport.findings.map((finding) => (
+                        <li key={finding.problem + finding.headline}>
+                          <div>
+                            <strong>{finding.headline}</strong>
+                            <p>{finding.detail}</p>
+                          </div>
+                          <button
+                            disabled={busy || !!proposal}
+                            onClick={() =>
+                              void edit(finding.actions, finding.headline)
+                            }
+                          >
+                            Fix
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className="mix-clear">
+                      Nothing in this mix measures as a problem.
+                    </p>
+                  )}
+                </>
+              ) : (
+                <p className="mix-clear">
+                  {mixReport?.stale_revision != null
+                    ? "The arrangement has changed since the last measurement. Analyse it again."
+                    : "Not measured yet."}
+                </p>
+              )}
+            </section>
           </>
         )}
 

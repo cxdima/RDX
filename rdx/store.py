@@ -25,6 +25,7 @@ class Store:
           CREATE TABLE IF NOT EXISTS history(project_id TEXT, position INTEGER, label TEXT, state TEXT, created REAL, PRIMARY KEY(project_id, position));
           CREATE TABLE IF NOT EXISTS feedback(id INTEGER PRIMARY KEY, project_id TEXT, revision INTEGER, request TEXT, context TEXT, plan TEXT, rating TEXT, comment TEXT, created REAL);
           CREATE TABLE IF NOT EXISTS messages(id INTEGER PRIMARY KEY, project_id TEXT, role TEXT, content TEXT, created REAL);
+          CREATE TABLE IF NOT EXISTS measurements(project_id TEXT, revision INTEGER, mix TEXT, created REAL, PRIMARY KEY(project_id, revision));
         """)
 
     def list(self):
@@ -82,6 +83,28 @@ class Store:
     def messages(self, project_id):
         with self.lock:
             return [dict(r) for r in self.db.execute("SELECT role,content FROM messages WHERE project_id=? ORDER BY id DESC LIMIT 40", (project_id,))][::-1]
+
+    def measure(self, project_id: str, revision: int, mix: dict):
+        """Keep a mix measurement against the exact revision that produced it.
+
+        Pinning to the revision is the point: a measurement of a different
+        arrangement is worse than no measurement, because it looks current.
+        """
+        with self.lock, self.db:
+            self.db.execute("INSERT OR REPLACE INTO measurements VALUES(?,?,?,?)", (project_id, revision, json.dumps(mix), time.time()))
+            self.db.execute("DELETE FROM measurements WHERE project_id=? AND revision<?", (project_id, revision - 8))
+
+    def measurement(self, project_id: str, revision: int) -> dict | None:
+        with self.lock:
+            row = self.db.execute("SELECT mix FROM measurements WHERE project_id=? AND revision=?", (project_id, revision)).fetchone()
+        return json.loads(row["mix"]) if row else None
+
+    def last_measured(self, project_id: str) -> int | None:
+        """The newest revision that was ever measured, so the studio can say
+        "this is out of date" rather than "this was never done"."""
+        with self.lock:
+            row = self.db.execute("SELECT MAX(revision) AS revision FROM measurements WHERE project_id=?", (project_id,)).fetchone()
+        return row["revision"] if row and row["revision"] is not None else None
 
     def feedback(self, project_id, revision, request, context, plan, rating, comment):
         with self.lock, self.db:

@@ -21,6 +21,7 @@ from starlette.middleware.trustedhost import TrustedHostMiddleware
 from . import audio
 from .bridge import Bridge
 from .domain import Clip, EditRequest, Model, Plan, Project, new_track, uid
+from .musical import mixdown
 from .musical.describe import describe
 from .engine import Unsupported, apply_actions, context, starter_project
 from .model import DATA, ROOT, LocalModel
@@ -196,7 +197,8 @@ async def chat(project_id: str, request: Chat):
         original = store.get(project_id)
         if original.revision != request.revision:
             raise Conflict("Refresh the project before asking for a change")
-        ctx = context(original, request.track_id, request.section_id)
+        measured = store.measurement(project_id, original.revision)
+        ctx = context(original, request.track_id, request.section_id, measured)
         selection = {"track": request.track_id, "section": request.section_id}
         previous = store.messages(project_id)
         store.add_message(project_id, "user", request.message)
@@ -204,7 +206,7 @@ async def chat(project_id: str, request: Chat):
         try:
             plan = await asyncio.to_thread(model.generate, ctx, request.message, previous)
             try:
-                preview = apply_actions(original, plan.actions, selection, findings) if plan.actions else original
+                preview = apply_actions(original, plan.actions, selection, findings, measured) if plan.actions else original
             except Unsupported:
                 # RDX genuinely cannot do this. Rephrasing will not help, so the
                 # user hears it straight rather than getting a near-miss edit.
@@ -215,7 +217,7 @@ async def chat(project_id: str, request: Chat):
                 findings.clear()
                 correction = request.message + "\nYour previous proposal failed validation: " + str(error)[:500] + "\nPrevious JSON: " + plan.model_dump_json() + "\nReturn one corrected JSON plan using the supported action kinds, track and section targets, and params. Do not broaden the original request."
                 plan = await asyncio.to_thread(model.generate, ctx, correction, [])
-                preview = apply_actions(original, plan.actions, selection, findings) if plan.actions else original
+                preview = apply_actions(original, plan.actions, selection, findings, measured) if plan.actions else original
         except ValueError as error:
             store.add_message(project_id, "assistant", str(error))
             raise
@@ -255,7 +257,7 @@ def apply_decision(proposal_id: str, request: Decision):
     # not write a no-op into the history the user has to undo past.
     if request.keep and proposed["plan"].actions:
         label = proposed["summary"].replace("\n", "; ")[:150] or "Edit"
-        original = store.save(apply_actions(original, proposed["plan"].actions, proposed.get("selection")), request.revision, label)
+        original = store.save(apply_actions(original, proposed["plan"].actions, proposed.get("selection"), None, store.measurement(original.id, request.revision)), request.revision, label)
     store.feedback(original.id, original.revision, proposed["request"], proposed["context"], proposed["plan"].model_dump(), "accepted" if request.keep else "rejected", request.comment)
     del proposals[proposal_id]
     return original
@@ -350,6 +352,66 @@ async def upload_render(file: UploadFile = File()):
     return {"id": render_id}
 
 
+class Analysis(Revision):
+    stems: dict[str, str]
+    master: str | None = None
+
+
+def stem_path(asset_id: str) -> Path:
+    if len(asset_id) != 12 or not asset_id.isalnum() or not (RENDERS / f"{asset_id}.wav").is_file():
+        raise ValueError("A rendered stem is missing")
+    return RENDERS / f"{asset_id}.wav"
+
+
+def measure_mix(project: Project, stems: dict[str, str], master: str | None) -> dict:
+    """Decode the rendered stems and measure what is actually in them."""
+    import soundfile as sf
+
+    known = {t.id for t in project.tracks}
+    if not stems or set(stems) - known:
+        raise ValueError("Render the current tracks before analysing the mix")
+    audio = {}
+    rate = 44100
+    for track_id, asset_id in stems.items():
+        samples, rate = sf.read(stem_path(asset_id), dtype="float32", always_2d=True)
+        audio[track_id] = samples
+    summed = None
+    if master:
+        summed, rate = sf.read(stem_path(master), dtype="float32", always_2d=True)
+    names = {t.id: (t.name, t.role) for t in project.tracks}
+    return mixdown.analyse(audio, rate, names, summed).as_dict()
+
+
+@app.post("/api/projects/{project_id}/mix")
+async def analyse_mix(project_id: str, request: Analysis):
+    project = store.get(project_id)
+    if project.revision != request.revision:
+        raise Conflict("Refresh the project before analysing the mix")
+    measured = await asyncio.to_thread(measure_mix, project, request.stems, request.master)
+    store.measure(project_id, project.revision, measured)
+    return mix_report(project, measured)
+
+
+@app.get("/api/projects/{project_id}/mix")
+def stored_mix(project_id: str):
+    project = store.get(project_id)
+    measured = store.measurement(project_id, project.revision)
+    if not measured:
+        return {"measured": False, "revision": project.revision, "stale_revision": store.last_measured(project_id)}
+    return mix_report(project, measured)
+
+
+def mix_report(project: Project, measured: dict) -> dict:
+    """The measurement, the problems it implies, and the wording the user reads.
+
+    Findings are computed here rather than stored, so they always propose a
+    change from the settings as they are now.
+    """
+    mix = mixdown.Mix.from_dict(measured)
+    found = mixdown.findings(mix, project)
+    return {"measured": True, "revision": project.revision, "mix": measured, "findings": [f.as_dict() for f in found], "summary": mixdown.summarise(mix, found)}
+
+
 class Transfer(Revision):
     stems: dict[str, str]
 
@@ -361,11 +423,7 @@ def send_to_ableton(project_id: str, request: Transfer):
         raise Conflict("Refresh before sending to Ableton")
     if set(request.stems) != {t.id for t in project.tracks}:
         raise ValueError("Render every track before transferring")
-    paths = {}
-    for track_id, asset_id in request.stems.items():
-        if len(asset_id) != 12 or not asset_id.isalnum() or not (RENDERS / f"{asset_id}.wav").is_file():
-            raise ValueError("A rendered stem is missing")
-        paths[track_id] = str(RENDERS / f"{asset_id}.wav")
+    paths = {track_id: str(stem_path(asset_id)) for track_id, asset_id in request.stems.items()}
     return {"id": bridge.send(project, paths)}
 
 

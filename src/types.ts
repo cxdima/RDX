@@ -116,6 +116,28 @@ export interface Status {
     live: Record<string, unknown>;
   };
 }
+export interface MixFinding {
+  problem: string;
+  headline: string;
+  detail: string;
+  tracks: string[];
+  actions: Action[];
+}
+export interface MixReport {
+  measured: boolean;
+  revision: number;
+  /** Set when an older revision was measured, so "out of date" can be said. */
+  stale_revision?: number | null;
+  /** Absent until the mix has been rendered and measured at this revision. */
+  mix?: {
+    bands: Record<string, number>;
+    crest_db: number;
+    peak_db: number;
+    loudness_lufs: number;
+  };
+  findings?: MixFinding[];
+  summary?: string;
+}
 export interface History {
   cursor: number;
   entries: { position: number; label: string; created: number }[];

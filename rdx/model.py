@@ -35,9 +35,11 @@ move — params name plus settings. buildup (intensity, roll, riser, cut_bars) r
 compose (track, section) — params density, variation. Writes notes for bass, chords, lead or pad.
 transpose (track, section) — params semitones, last_note, start, end.
 rhythm (track, section) — params grid, swing, humanize, velocity.
+phrase (track, section) — params operation, amount, shape, degrees. Changes the shape of a melody rather than its individual notes. operation "space" thins it out and holds the rest, "fill" adds passing notes, "vary" breaks up a phrase that repeats itself, "shape" bends its contour with shape one of rise, fall, arch, valley, flat.
 notes (track, section) — params operation (replace, add, remove), notes.
 automation (track, section) — params parameter (cutoff, resonance, volume_db, pan, reverb, flanger, chorus), points, operation.
 mix (track) — params volume_db, delta_db, pan, mute, solo.
+mix_fix — params problem. Use this when the user complains about the finished sound rather than one part: muddy, boomy, thin, harsh, dull, masking, squashed, buried, loud. Only offer it when "mix_measured" appears in the context and lists that problem; otherwise say the mix has to be analysed first. Leave problem out to correct everything measured.
 arrange (section) — params operation (add, duplicate, remove, move, update), name, bars, energy, index.
 project — params name, tempo, key, scale.  master — params volume_db, ceiling, compression.
 add_track — params role, name, preset.  duplicate_track, remove_track, protect (locked) — track.
