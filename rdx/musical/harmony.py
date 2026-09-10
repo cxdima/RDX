@@ -19,8 +19,100 @@ MINOR = (0, 2, 3, 5, 7, 8, 10)
 PITCH_CLASSES = ("C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B")
 ROMAN = ("I", "II", "III", "IV", "V", "VI", "VII")
 
-# Chord tones above the root, by quality.
-QUALITIES = {"major": (0, 4, 7), "minor": (0, 3, 7), "diminished": (0, 3, 6), "sus4": (0, 5, 7)}
+# Chord tones above the root, by quality. The triads are the shapes a
+# progression is built from; the rest are colours added on request, because a
+# seventh on every chord is a different genre rather than a better voicing.
+QUALITIES = {
+    "major": (0, 4, 7),
+    "minor": (0, 3, 7),
+    "diminished": (0, 3, 6),
+    "sus2": (0, 2, 7),
+    "sus4": (0, 5, 7),
+    "major7": (0, 4, 7, 11),
+    "minor7": (0, 3, 7, 10),
+    "dominant7": (0, 4, 7, 10),
+    "half_diminished": (0, 3, 6, 10),
+    "major9": (0, 4, 7, 11, 14),
+    "minor9": (0, 3, 7, 10, 14),
+    "add9": (0, 2, 4, 7),
+    "minor_add9": (0, 2, 3, 7),
+    "sixth": (0, 4, 7, 9),
+    "minor_sixth": (0, 3, 7, 9),
+    "dominant9": (0, 4, 7, 10, 14),
+    "minor_major7": (0, 3, 7, 11),
+    "diminished7": (0, 3, 6, 9),
+}
+
+TRIADS = ("major", "minor", "diminished")
+
+# Colours that are the same shape wherever they land.
+FIXED_COLOURS: dict[str, dict[str, str]] = {
+    "add9": {"major": "add9", "minor": "minor_add9", "diminished": "diminished"},
+    "sixth": {"major": "sixth", "minor": "minor_sixth", "diminished": "diminished"},
+    "plain": {"major": "major", "minor": "minor", "diminished": "diminished"},
+}
+
+# A suspension replaces the third with the note two or four scale steps up —
+# and only some degrees produce a usable one. The fourth above the VI of a
+# minor key is a tritone, not a suspension, so those chords are left as triads
+# rather than given a chord that would sound like a mistake.
+SUSPENSIONS = {"sus2": (1, 2), "sus4": (3, 5)}
+
+# Sevenths are not. The seventh of a chord comes from the key, not from the
+# triad: in A minor the VII is G7 and the III is Cmaj7, both major triads. A
+# lookup that gave every major triad a major seventh would put a wrong note in
+# the most common cadence in the genre, so the interval is worked out instead.
+SEVENTHS = {
+    ("major", 11): "major7", ("major", 10): "dominant7",
+    ("minor", 10): "minor7", ("minor", 11): "minor_major7",
+    ("diminished", 10): "half_diminished", ("diminished", 9): "diminished7",
+}
+NINTHS = {"major7": "major9", "dominant7": "dominant9", "minor7": "minor9", "minor_major7": "minor9", "half_diminished": "half_diminished", "diminished7": "diminished7"}
+
+COLOURS = ("seventh", "ninth", *SUSPENSIONS, *FIXED_COLOURS)
+
+# A sixth on a minor chord is a Dorian sixth — F# over A minor — which is
+# outside the natural minor scale. It is a real and common colour in dance
+# music, so it stays, but it is the one colour that borrows, and RDX says so
+# rather than letting a note appear from nowhere.
+BORROWS = {"sixth": "The sixth is borrowed from Dorian on minor chords."}
+
+
+def step_interval(degree: int, steps_up: int, scale: str) -> int:
+    """The distance in semitones to a note a given number of scale steps up."""
+    ladder = steps_of(scale)
+    return (ladder[(degree + steps_up) % 7] - ladder[degree]) % 12
+
+
+def seventh_interval(degree: int, scale: str) -> int:
+    """How far the key's own seventh sits above a chord's root, in semitones."""
+    return step_interval(degree, 6, scale)
+
+
+def suspension(degree: int, scale: str, kind: str) -> str | None:
+    """The suspension this degree supports in this key, if it supports one."""
+    steps_up, wanted = SUSPENSIONS[kind]
+    return kind if step_interval(degree, steps_up, scale) == wanted else None
+
+
+def steps_of(scale: str) -> tuple[int, ...]:
+    return MINOR if scale == "minor" else MAJOR
+
+SUFFIXES = {
+    "major": "", "minor": "m", "diminished": "dim", "sus2": "sus2", "sus4": "sus4",
+    "major7": "maj7", "minor7": "m7", "dominant7": "7", "half_diminished": "m7b5",
+    "major9": "maj9", "minor9": "m9", "add9": "add9", "minor_add9": "m(add9)",
+    "sixth": "6", "minor_sixth": "m6", "dominant9": "9", "minor_major7": "m(maj7)", "diminished7": "dim7",
+}
+
+# Roman numerals carry the quality in the case of the numeral itself, so the
+# suffix must not repeat it: i7, not im7, and never "maj7" trimmed to "aj7".
+NUMERAL_SUFFIXES = {
+    "major": "", "minor": "", "diminished": "", "sus2": "sus2", "sus4": "sus4",
+    "major7": "maj7", "minor7": "7", "dominant7": "7", "half_diminished": "ø7",
+    "major9": "maj9", "minor9": "9", "add9": "add9", "minor_add9": "add9",
+    "sixth": "6", "minor_sixth": "6", "dominant9": "9", "minor_major7": "(maj7)", "diminished7": "°7",
+}
 
 
 @dataclass(frozen=True)
@@ -39,13 +131,34 @@ class Chord:
 
     @property
     def symbol(self) -> str:
-        suffix = {"major": "", "minor": "m", "diminished": "dim", "sus4": "sus4"}[self.quality]
-        return PITCH_CLASSES[self.root_pc] + suffix
+        return PITCH_CLASSES[self.root_pc] + SUFFIXES[self.quality]
+
+    @property
+    def triad(self) -> str:
+        """The plain shape underneath, so a colour can be applied or removed."""
+        if self.quality in TRIADS:
+            return self.quality
+        return "diminished" if self.quality == "half_diminished" else "minor" if (0, 3) == self.intervals[:2] or self.quality.startswith("minor") else "major"
+
+    def coloured(self, colour: str, scale: str = "minor") -> "Chord":
+        """The same chord with an extension added, or taken back to its triad."""
+        if colour in FIXED_COLOURS:
+            return Chord(self.degree, self.root_pc, FIXED_COLOURS[colour][self.triad])
+        if colour in SUSPENSIONS:
+            quality = suspension(self.degree, scale, colour)
+            return Chord(self.degree, self.root_pc, quality) if quality else self
+        if colour not in {"seventh", "ninth"}:
+            raise KeyError(colour)
+        seventh = SEVENTHS.get((self.triad, seventh_interval(self.degree, scale)))
+        if seventh is None:  # an interval the key does not produce; leave it alone
+            return self
+        return Chord(self.degree, self.root_pc, seventh if colour == "seventh" else NINTHS[seventh])
 
     @property
     def numeral(self) -> str:
         numeral = ROMAN[self.degree]
-        return numeral.lower() + ("°" if self.quality == "diminished" else "") if self.quality in {"minor", "diminished"} else numeral
+        lower = self.triad in {"minor", "diminished"}
+        return (numeral.lower() if lower else numeral) + ("°" if self.triad == "diminished" else "") + NUMERAL_SUFFIXES[self.quality]
 
 
 def key_pc(key: str) -> int:
@@ -134,7 +247,38 @@ def nearest_chord(pitch: int, chords: list[Chord]) -> Chord:
     return min(chords, key=lambda c: min((c.root_pc - pc) % 12, (pc - c.root_pc) % 12))
 
 
-def progression(notes: list[Note], bars: int, key: str, scale: str, span: float = 4.0) -> list[tuple[float, float, Chord]]:
+# How much better a suspension has to score than the plain triad before RDX
+# hears one. A triad is the default reading of a melody; a sus chord is a
+# claim that the third is deliberately missing, and it should have to earn it.
+SUSPENSION_MARGIN = 1.12
+
+
+def sus_candidates(chords: list[Chord], scale: str) -> list[Chord]:
+    """The suspensions available in this key, as chords the search can pick.
+
+    Making them candidates rather than a post-hoc override means the same
+    scoring decides: a melody that leans on the fourth and never touches the
+    third scores higher as sus4 because the fourth is a chord tone there and a
+    wrong note in the triad. Nothing special-cases it.
+    """
+    found: list[Chord] = []
+    for chord in chords:
+        if chord.quality not in TRIADS:
+            continue
+        for kind in SUSPENSIONS:
+            if suspension(chord.degree, scale, kind):
+                found.append(Chord(chord.degree, chord.root_pc, kind))
+    return found
+
+
+def colour_progression(entries: list[tuple[float, float, Chord]], colour: str, scale: str = "minor") -> list[tuple[float, float, Chord]]:
+    """Add the same extension across a progression, or take it back to triads."""
+    if colour not in COLOURS:
+        raise KeyError(colour)
+    return [(start, length, chord.coloured(colour, scale)) for start, length, chord in entries]
+
+
+def progression(notes: list[Note], bars: int, key: str, scale: str, span: float = 4.0, sus: bool = True) -> list[tuple[float, float, Chord]]:
     """Infer a chord progression from a hummed line.
 
     Returns (start_beat, length_beats, chord) covering the whole section.
@@ -157,11 +301,17 @@ def progression(notes: list[Note], bars: int, key: str, scale: str, span: float 
             start, length, chord = result[0]
             result[0] = (0.0, length + start, chord)
         return result
+    suspensions = sus_candidates(chords, scale) if sus else []
     for start, inside in segment_notes(notes, bars, span):
         if not inside:
             chosen = previous or tonic
         else:
             chosen = max(chords, key=lambda c: score_chord(c, inside, previous))
+            if suspensions:
+                best = max(suspensions, key=lambda c: score_chord(c, inside, previous))
+                triad_score = score_chord(chosen, inside, previous)
+                if triad_score > 0 and score_chord(best, inside, previous) > triad_score * SUSPENSION_MARGIN:
+                    chosen = best
         result.append((start, span, chosen))
         previous = chosen
     return result

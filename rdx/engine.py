@@ -12,6 +12,7 @@ from .musical import harmony as harmony_module
 from .musical import melody as melody_module
 from .musical import mixdown as mixdown_module
 from .musical import moves as moves_module
+from .musical import parts as parts_module
 from .musical import sidechain as sidechain_module
 
 
@@ -34,8 +35,8 @@ def keys(params: dict, allowed: set[str]):
 
 
 NUMERIC_PARAMS = {"tempo", "seed", "density", "variation", "semitones", "start", "end", "grid", "swing", "humanize", "velocity", "cutoff", "resonance", "attack", "release", "reverb", "delay", "drive", "low", "mid", "high", "volume_db", "delta_db", "pan", "bars", "energy", "index", "ceiling", "compression", "audio_offset", "chorus", "flanger", "phaser", "autopan", "motion_rate", "width", "glide", "intensity", "span", "voices", "roll_from_bar", "octave", "cut_bars", "from_cutoff", "to_cutoff", "start_beat", "beats", "to_db", "amount", "degrees"}
-BOOLEAN_PARAMS = {"locked", "last_note", "mute", "solo", "crash", "fill", "roll", "riser"}
-TEXT_PARAMS = {"name", "role", "key", "scale", "pattern", "preset", "operation", "parameter", "note_id", "character", "kit", "from_track", "track", "layer_name", "source", "curve", "trigger", "shape", "problem"}
+BOOLEAN_PARAMS = {"locked", "last_note", "mute", "solo", "crash", "fill", "roll", "riser", "keep_rhythm"}
+TEXT_PARAMS = {"name", "role", "key", "scale", "pattern", "preset", "operation", "parameter", "note_id", "character", "kit", "from_track", "track", "layer_name", "source", "curve", "trigger", "shape", "problem", "colour", "against"}
 
 
 def parameter_types(params: dict):
@@ -521,7 +522,7 @@ def apply_actions(original: Project, actions: list[Action], selection: dict | No
                             track.clips.append(clip)
                         clip.notes = sorted(notes, key=lambda n: (n.start, n.pitch))
                     elif action.kind == "harmony":
-                        keys(p, {"from_track", "span", "voices", "low", "high", "velocity"})
+                        keys(p, {"from_track", "span", "voices", "low", "high", "velocity", "colour"})
                         if track.role in {"drums", "audio"}:
                             raise EditError("Chords need an instrument track")
                         source_track = target_tracks(project, p.get("from_track") or track.id, selection)[0]
@@ -535,6 +536,17 @@ def apply_actions(original: Project, actions: list[Action], selection: dict | No
                         if not 2 <= voices <= 5:
                             raise EditError("Chords use between two and five voices")
                         entries = harmony_module.progression(source.notes, section.bars, project.key, project.scale, span)
+                        colour = p.get("colour")
+                        if colour is not None:
+                            if colour not in harmony_module.COLOURS:
+                                raise Unsupported(f"There is no '{colour}' chord colour. Available: {', '.join(harmony_module.COLOURS)}.")
+                            entries = harmony_module.colour_progression(entries, colour, project.scale)
+                            if findings is not None and colour in harmony_module.BORROWS:
+                                findings.append(harmony_module.BORROWS[colour])
+                            # A seventh nobody hears is not a seventh: widen the
+                            # voicing to carry the extension that was asked for.
+                            if "voices" not in p:
+                                voices = min(5, max(len(c.intervals) for _, _, c in entries))
                         if findings is not None:
                             heard = "chord roots" if harmony_module.looks_like_roots(source.notes, section.bars) else "a melody"
                             findings.append(f"Heard {heard} on {source_track.name} and built {harmony_module.describe(entries)} in {section.name}.")
@@ -546,6 +558,46 @@ def apply_actions(original: Project, actions: list[Action], selection: dict | No
                             clip = Clip(name=track.name, section_id=section.id)
                             track.clips.append(clip)
                         clip.notes = harmony_module.voice(entries, low=low, high=high, voices=voices, velocity=int(p.get("velocity", 72)))
+                    elif action.kind == "relate":
+                        keys(p, {"operation", "from_track", "degrees", "grid", "density", "keep_rhythm", "octave", "against"})
+                        if track.role in {"drums", "audio"}:
+                            raise EditError("Relating one part to another is for instrument tracks")
+                        operation = p.get("operation", "follow")
+                        if operation not in parts_module.RELATIONS:
+                            raise Unsupported(f"RDX cannot relate two parts by '{operation}'. It knows: {', '.join(parts_module.RELATIONS)}.")
+                        other = target_tracks(project, p.get("from_track"), selection)[0]
+                        if other.id == track.id:
+                            raise EditError(f"{track.name} cannot be written against itself; name the other part")
+                        source = next((c for c in other.clips if c.section_id == section.id), None)
+                        if source is None or not source.notes:
+                            raise EditError(f"{other.name} has nothing in {section.name} to work from")
+                        length = section.bars * 4
+                        existing = clip.notes if clip else []
+                        try:
+                            if operation == "follow":
+                                written = parts_module.follow(source.notes, length, role=track.role, rhythm=existing if p.get("keep_rhythm", True) and existing else None)
+                            elif operation == "counter":
+                                # A whole kit leaves no gaps to answer; the kick
+                                # does. So a drum source answers one voice.
+                                against = p.get("against") or ("kick" if other.role == "drums" else None)
+                                written = parts_module.counter(source.notes, length, role=track.role, grid=float(p.get("grid", 0.5)), density=float(p.get("density", 0.6)), key=project.key, scale=project.scale, seed=project.seed, against=against)
+                            elif operation == "harmonise":
+                                written = parts_module.harmonise(source.notes, degrees=int(p.get("degrees", 2)), key=project.key, scale=project.scale)
+                            else:
+                                written = parts_module.octaves(source.notes, direction=int(p.get("octave", -1)))
+                        except ValueError as error:
+                            raise EditError(str(error)) from error
+                        written = [n for n in written if n.start < length]
+                        for note in written:
+                            note.duration = min(note.duration, length - note.start)
+                        if not written:
+                            raise EditError(f"Nothing could be written for {track.name} in {section.name}")
+                        if not clip:
+                            clip = Clip(name=track.name, section_id=section.id)
+                            track.clips.append(clip)
+                        clip.notes = sorted(written, key=lambda n: (n.start, n.pitch))
+                        if findings is not None:
+                            findings.append(f"{track.name} now {parts_module.RELATIONS[operation]} from {other.name} in {section.name} ({len(clip.notes)} notes).")
                     elif action.kind == "automation":
                         keys(p, {"parameter", "points", "operation"})
                         if p.get("operation") == "remove":

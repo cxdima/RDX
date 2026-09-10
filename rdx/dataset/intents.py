@@ -401,6 +401,39 @@ def intents() -> list[Intent]:
     ]
 
     items += [
+        Intent("relate_bass_follows_chords", (
+            "the bass should follow the chords",
+            "make the bass play the chord roots",
+            "the bass and the chords don't line up",
+            "put the bass under the chord progression",
+            "the bassline should follow the harmony",
+        ), lambda scene, rng: ([act("relate", {"operation": "follow", "from_track": "chords"}, track="bass", section="selected")], "")),
+        Intent("relate_counter_kick", (
+            "give the {track} a counter-rhythm to the kick",
+            "the {track} should play in between the kicks",
+            "put the {track} in the gaps the kick leaves",
+            "I want the {track} answering the kick",
+        ), lambda scene, rng: ([act("relate", {"operation": "counter", "from_track": "drums", "against": "kick"}, track=scene.name(scene.selected_role), section="selected")], "")),
+        Intent("relate_harmonise", (
+            "add a harmony line to the melody",
+            "harmonise the lead a third above",
+            "put a second line over the {track}",
+            "I want two notes moving together on the melody",
+        ), lambda scene, rng: ([act("add_track", {"role": "lead", "name": "Harmony", "preset": "pluck"}), act("relate", {"operation": "harmonise", "from_track": scene.name("lead"), "degrees": 2}, track="Harmony", section="selected")], "")),
+        Intent("harmony_sevenths", (
+            "put sevenths on those chords",
+            "add a seventh to each chord",
+            "the chords should be seventh chords",
+            "make the harmony richer with sevenths",
+        ), lambda scene, rng: ([act("harmony", {"colour": "seventh"}, track="chords", section="selected")], "")),
+        Intent("harmony_suspended", (
+            "make the chords suspended",
+            "I want sus chords in there",
+            "suspend the chords, take the third out",
+        ), lambda scene, rng: ([act("harmony", {"colour": rng.choice(["sus4", "sus2"])}, track="chords", section="selected")], "")),
+    ]
+
+    items += [
         Intent("phrase_space", (
             "more space between the notes on the {track}",
             "the {track} is too busy",

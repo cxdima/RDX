@@ -15,7 +15,7 @@ import pytest
 
 from rdx.domain import Action, Clip, DRUM_MAP, Note, Sound
 from rdx.engine import EditError, Unsupported, apply_actions, starter_project
-from rdx.musical import drums, harmony, melody, moves, sidechain
+from rdx.musical import drums, harmony, melody, moves, parts, sidechain
 from rdx.musical.character import CHARACTERS, character_changes
 from rdx.musical.describe import describe
 
@@ -613,3 +613,154 @@ def test_the_phrase_report_says_what_it_did(project, selection):
     findings: list[str] = []
     apply_actions(project, [Action(kind="phrase", track="lead", section="Main", params={"operation": "space", "amount": 0.5})], selection, findings)
     assert "notes" in findings[0] and "Lead" in findings[0]
+
+
+# --- richer harmony --------------------------------------------------------
+
+
+def progression_of(pitches, key="A", scale="minor"):
+    return harmony.progression(held(pitches), len(pitches), key, scale)
+
+
+def test_the_seventh_comes_from_the_key_not_from_the_triad():
+    """In A minor the VII is G7 and the III is Cmaj7, and both are major triads."""
+    coloured = harmony.colour_progression(progression_of([57, 53, 60, 55]), "seventh", "minor")
+    assert [c.symbol for _, _, c in coloured] == ["Am7", "Fmaj7", "Cmaj7", "G7"]
+
+
+def test_the_dominant_of_a_major_key_takes_a_flat_seventh():
+    coloured = harmony.colour_progression(progression_of([60, 67, 65, 60], "C", "major"), "seventh", "major")
+    assert [c.symbol for _, _, c in coloured] == ["Cmaj7", "G7", "Fmaj7", "Cmaj7"]
+
+
+def test_every_colour_stays_inside_the_key_except_the_one_that_says_it_does_not():
+    scale_pcs = {(9 + step) % 12 for step in harmony.MINOR}
+    for colour in harmony.COLOURS:
+        outside = {pc for _, _, chord in harmony.colour_progression(progression_of([57, 53, 60, 55]), colour, "minor") for pc in chord.pitch_classes} - scale_pcs
+        assert bool(outside) == (colour in harmony.BORROWS), f"{colour} put {outside} outside the key"
+
+
+def test_the_borrowed_sixth_is_reported_rather_than_slipped_in(project, selection):
+    section = next(s for s in project.sections if s.name == "Main")
+    with_source = apply_actions(project, [Action(kind="add_track", params={"role": "chords", "name": "Keys"})], selection)
+    next(t for t in with_source.tracks if t.name == "Keys").clips.append(Clip(name="Hum", section_id=section.id, notes=held([57, 53, 60, 55])))
+    findings: list[str] = []
+    apply_actions(with_source, [Action(kind="harmony", track="Keys", section="Main", params={"colour": "sixth"})], selection, findings)
+    assert any("Dorian" in line for line in findings)
+
+
+def test_a_colour_can_be_taken_back_off_again():
+    plain = progression_of([57, 53, 60, 55])
+    sevenths = harmony.colour_progression(plain, "seventh", "minor")
+    assert [c.symbol for _, _, c in harmony.colour_progression(sevenths, "plain", "minor")] == [c.symbol for _, _, c in plain]
+
+
+def melody_of(pairs):
+    """A moving line of (pitch, duration), laid end to end."""
+    notes, start = [], 0.0
+    for pitch_value, duration in pairs:
+        notes.append(Note(pitch=pitch_value, start=round(start, 4), duration=duration, velocity=90))
+        start += duration
+    return notes
+
+
+def test_a_melody_that_leans_on_the_fourth_and_never_plays_the_third_is_heard_as_sus4():
+    # A, D and E over an A root, with no C anywhere: that is Asus4, not Am.
+    chosen = harmony.progression(melody_of([(69, 1.5), (62, 0.7), (69, 1.0), (64, 0.5), (62, 0.3)]), 1, "A", "minor")[0][2]
+    assert chosen.symbol == "Asus4", chosen.symbol
+
+
+def test_the_same_melody_with_the_third_in_it_is_a_plain_triad():
+    chosen = harmony.progression(melody_of([(69, 1.5), (60, 0.7), (69, 1.0), (64, 0.5), (60, 0.3)]), 1, "A", "minor")[0][2]
+    assert chosen.quality in harmony.TRIADS, chosen.symbol
+
+
+def test_a_degree_whose_fourth_is_a_tritone_is_never_suspended():
+    """The fourth above the VI of a minor key is not a suspension at all."""
+    sixth_degree = next(c for c in harmony.diatonic("A", "minor") if c.degree == 5)
+    assert sixth_degree.coloured("sus4", "minor").quality in harmony.TRIADS
+
+
+def test_asking_for_sevenths_widens_the_voicing_to_carry_them(project, selection):
+    section = next(s for s in project.sections if s.name == "Main")
+    with_source = apply_actions(project, [Action(kind="add_track", params={"role": "chords", "name": "Keys", "preset": "strings"})], selection)
+    keys_track = next(t for t in with_source.tracks if t.name == "Keys")
+    keys_track.clips.append(Clip(name="Hum", section_id=section.id, notes=held([57, 53, 60, 55])))
+    after = apply_actions(with_source, [Action(kind="harmony", track="Keys", section="Main", params={"colour": "seventh"})], selection)
+    clip = next(c for c in next(t for t in after.tracks if t.name == "Keys").clips if c.section_id == section.id)
+    at_start = [n.pitch for n in clip.notes if abs(n.start) < 1e-6]
+    assert len(at_start) == 4, "a seventh chord nobody can hear is not a seventh chord"
+
+
+def test_an_unknown_chord_colour_is_refused_by_name(project, selection):
+    section = next(s for s in project.sections if s.name == "Main")
+    with_source = apply_actions(project, [Action(kind="add_track", params={"role": "chords", "name": "Keys"})], selection)
+    next(t for t in with_source.tracks if t.name == "Keys").clips.append(Clip(name="Hum", section_id=section.id, notes=held([57, 53])))
+    with pytest.raises(Unsupported, match="seventh"):
+        apply_actions(with_source, [Action(kind="harmony", track="Keys", section="Main", params={"colour": "lydian"})], selection)
+
+
+# --- one part written against another --------------------------------------
+
+
+def chords_of(*roots):
+    """Held triads, one per bar, the way the chord track actually looks."""
+    return [Note(pitch=root + interval, start=float(bar * 4), duration=3.8, velocity=74) for bar, root in enumerate(roots) for interval in (0, 3, 7)]
+
+
+def test_a_following_bass_lands_on_the_root_of_every_chord():
+    written = parts.follow(chords_of(57, 53, 60, 55), 16, role="bass")
+    assert [n.pitch % 12 for n in written] == [57 % 12, 53 % 12, 60 % 12, 55 % 12]
+    assert all(28 <= n.pitch <= 52 for n in written), "a bass part belongs in the bass register"
+
+
+def test_following_can_keep_the_rhythm_it_already_had():
+    # Eight beats of eighth notes, so the groove spans both chords.
+    groove = [Note(pitch=45, start=b * 0.5, duration=0.4, velocity=90) for b in range(16)]
+    written = parts.follow(chords_of(57, 53), 8, role="bass", rhythm=groove)
+    assert [n.start for n in written] == [n.start for n in groove], "the groove is what was kept"
+    assert {n.pitch % 12 for n in written} == {9, 5}, "but the notes follow the chords"
+
+
+def test_a_counter_rhythm_lands_where_the_other_part_is_silent():
+    kick = [Note(pitch=36, start=float(b), duration=0.12, velocity=100) for b in range(4)]
+    written = parts.counter(kick, 4, grid=0.5, density=1.0, key="A", scale="minor", seed=1)
+    assert written
+    for note in written:
+        assert all(abs(note.start - hit.start) > 1e-6 for hit in kick), "a counter-rhythm answers, it does not double"
+
+
+def test_a_harmony_line_moves_in_scale_degrees_not_semitones():
+    melody_line = [Note(pitch=p, start=float(i), duration=0.9, velocity=90) for i, p in enumerate([69, 71, 72, 74])]
+    line = parts.harmonise(melody_line, degrees=2, key="A", scale="minor")
+    intervals = [b.pitch - a.pitch for a, b in zip(melody_line, line)]
+    assert set(intervals) <= {3, 4}, "a third in the key is sometimes three semitones and sometimes four"
+    assert len(set(intervals)) > 1, "a constant interval would be the wrong note somewhere"
+
+
+def test_relating_the_bass_to_the_chords_through_the_engine(project, selection):
+    after = apply_actions(project, [Action(kind="relate", track="bass", section="Main", params={"operation": "follow", "from_track": "chords"})], selection)
+    main = next(s for s in after.sections if s.name == "Main")
+    chords = next(c for c in next(t for t in after.tracks if t.role == "chords").clips if c.section_id == main.id)
+    bass = next(c for c in next(t for t in after.tracks if t.role == "bass").clips if c.section_id == main.id)
+    for note in bass.notes:
+        sounding = [n.pitch % 12 for n in chords.notes if n.start <= note.start + 1e-6 < n.start + n.duration]
+        assert not sounding or note.pitch % 12 in sounding, "the bass should be playing a note from the chord"
+
+
+def test_a_part_cannot_be_written_against_itself(project, selection):
+    with pytest.raises(EditError, match="itself"):
+        apply_actions(project, [Action(kind="relate", track="bass", section="Main", params={"from_track": "bass"})], selection)
+
+
+def test_an_unknown_relationship_is_refused_by_name(project, selection):
+    with pytest.raises(Unsupported, match="follow"):
+        apply_actions(project, [Action(kind="relate", track="bass", section="Main", params={"operation": "imitate", "from_track": "chords"})], selection)
+
+
+def test_a_counter_rhythm_to_a_kit_answers_the_kick_rather_than_failing(project, selection):
+    """A full kit leaves no gaps; naming no voice must still do the right thing."""
+    after = apply_actions(project, [Action(kind="relate", track="lead", section="Main", params={"operation": "counter", "from_track": "drums", "density": 1.0})], selection)
+    main = next(s for s in after.sections if s.name == "Main")
+    clip = next(c for c in next(t for t in after.tracks if t.role == "lead").clips if c.section_id == main.id)
+    assert clip.notes and all(n.start + n.duration <= main.bars * 4 + 1e-9 for n in clip.notes)
