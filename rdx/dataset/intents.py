@@ -285,6 +285,30 @@ def intents() -> list[Intent]:
             "add the melody an octave higher on another sound",
             "layer the lead up an octave",
         ), layer_build("bell", 1)),
+        Intent("transition", (
+            "I need a transition between these two parts",
+            "the change between sections is too abrupt",
+            "smooth the join into the next section",
+            "put a transition at the end of this part",
+            "it jumps straight in, give me something at the seam",
+        ), move_build("transition")),
+        Intent("riser_alone", (
+            "put a riser over this",
+            "I want a riser sweeping up here",
+            "add a rising sweep to this section",
+            "give me a riser into the next part",
+        ), move_build("riser")),
+        Intent("double_time", (
+            "make the drums double time",
+            "play this twice as fast without changing the tempo",
+            "double time feel here",
+            "the drums should be double speed",
+        ), move_build("double_time", {"roles": ["drums"]})),
+        Intent("half_time_feel", (
+            "half time feel in this section",
+            "make it feel half speed",
+            "slow the feel down but keep the tempo",
+        ), move_build("double_time", {"factor": 0.5})),
         Intent("harmony_from_hum", (
             "turn that hum into chords",
             "make my humming into a chord progression",

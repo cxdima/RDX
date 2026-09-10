@@ -130,7 +130,17 @@ CASES: list[Case] = [
     # Ducking: a real operation now, so acting is correct and refusing is not.
     Case("The chords need to move out of the way each time the kick lands.", "musical language", lambda p, pr, refused=None: None if find(p, "sidechain") or (find(p, "move") and find(p, "move")[0].params.get("name") == "pump") else f"expected ducking, got {[(a.kind, a.params) for a in p.actions]}"),
     Case("I want the whole track breathing with the beat.", "musical language", lambda p, pr, refused=None: None if find(p, "sidechain") or (find(p, "move") and find(p, "move")[0].params.get("name") == "pump") else f"expected ducking, got {[(a.kind, a.params) for a in p.actions]}"),
+    # Shaping a phrase rather than moving its notes.
+    Case("There are too many notes in this melody; give it room to breathe.", "shaping", does("phrase", role="lead", operation="space")),
+    Case("I want the last stretch of the melody to climb upwards.", "shaping", lambda p, pr, refused=None: does("phrase", role="lead")(p, pr, refused) or (None if find(p, "phrase")[0].params.get("shape") == "rise" else f"shape was {find(p, 'phrase')[0].params.get('shape')!r}, expected 'rise'")),
+    # One part written against another.
+    Case("The bassline should sit under whatever the chords are doing.", "relating", does("relate", role="bass", operation="follow")),
+    # Harmony with colour.
+    Case("These chords are plain. Put a seventh on each of them.", "relating", lambda p, pr, refused=None: None if (find(p, "harmony") and find(p, "harmony")[0].params.get("colour") in {"seventh", "ninth"}) else f"expected a seventh colour, got {[(a.kind, a.params) for a in p.actions]}"),
+    # The wider move library.
+    Case("These two sections crash into each other. Smooth out the join.", "arranging", does("move", name="transition")),
     # Things RDX cannot do. Saying so is the correct answer.
+    Case("Is this mix muddy? Fix whatever is wrong with it.", "declining", declines()),
     Case("Load Serum on the lead and use my preset.", "declining", declines()),
     Case("Put a tape stop right before the drop.", "declining", declines()),
     Case("Make it better.", "declining", declines()),

@@ -158,7 +158,103 @@ def pump(project: Project, *, shape: str = "pump", source: str | None = None, tr
     return [Action(kind="sidechain", track=track.id, params=dict(settings)) for track in targets]
 
 
-MOVES = {"buildup": buildup, "drop": drop, "breakdown": breakdown, "fade": fade, "layer": layer, "pump": pump}
+def transition(project: Project, section_id: str, *, beats: float = 4.0, crash: bool = True, sweep: bool = True, impact: bool = True) -> list[Action]:
+    """The join between two sections: a sweep out, a crash in, a moment of air.
+
+    A transition is the one thing a producer hears immediately when it is
+    missing. It is three small gestures at the seam rather than one effect:
+    the outgoing section opens up, everything drops for a beat, and the new
+    one starts on a crash.
+    """
+    section = section_of(project, section_id)
+    length = section.bars * 4
+    if not 0 < beats <= length:
+        raise ValueError("The transition has to be shorter than the section it ends")
+    start = length - beats
+    actions: list[Action] = []
+    if sweep:
+        for track in editable(project, MELODIC):
+            actions.append(Action(kind="automation", track=track.id, section=section_id, params={"parameter": "cutoff", "points": curve(start, length, track.sound.cutoff, 18000, steps=6, shape=1.4)}))
+    if impact:
+        # The last half beat is silent on everything, which is what makes the
+        # next downbeat land. Producers call it the gap and it is mostly air.
+        gap = max(start, length - 0.5)
+        actions += fade(project, section_id, start_beat=gap, beats=0.25, to_db=-60)
+    if crash:
+        following = next((s for s in project.sections[project.sections.index(section) + 1 :]), None)
+        drums = editable(project, {"drums"})
+        if following and drums:
+            actions.append(Action(kind="kit", track=drums[0].id, section=following.id, params={"crash": True}))
+    if not actions:
+        raise ValueError("Choose at least one part of the transition to keep")
+    return actions
+
+
+def riser(project: Project, section_id: str, *, bars: float = 0.0, preset: str = "noise", name: str = "Riser", to_db: float = -12.0) -> list[Action]:
+    """A riser as a thing in its own right, not a side effect of a buildup.
+
+    Producers reach for one on its own — over a breakdown, into a bridge — so
+    it is its own move, on its own track, reusing the same track if it is there.
+    """
+    section = section_of(project, section_id)
+    length = section.bars * 4
+    span = bars * 4 if bars > 0 else length
+    if not 0 < span <= length:
+        raise ValueError("The riser has to fit inside the section")
+    start = length - span
+    existing = next((t for t in project.tracks if t.name.lower() == name.lower()), None)
+    if existing and existing.locked:
+        raise ValueError(f"The {existing.name} track is protected; unlock it first")
+    actions: list[Action] = []
+    if existing is None:
+        actions.append(Action(kind="add_track", params={"role": "pad", "name": name, "preset": preset}))
+    actions += [
+        Action(kind="notes", track=name, section=section_id, params={"operation": "replace", "notes": [{"pitch": 60, "start": round(start, 4), "duration": round(span, 4), "velocity": 70}]}),
+        Action(kind="automation", track=name, section=section_id, params={"parameter": "cutoff", "points": curve(start, length, 300, 16000)}),
+        Action(kind="automation", track=name, section=section_id, params={"parameter": "volume_db", "points": curve(start, length, -46, to_db, shape=1.6)}),
+    ]
+    return actions
+
+
+def double_time(project: Project, section_id: str, *, factor: float = 2.0, roles: list[str] | None = None) -> list[Action]:
+    """Halve or double the note spacing of a section without changing the tempo.
+
+    "Make the drums double time" is a rhythmic instruction, not a tempo one:
+    the track stays at 128 and the part plays twice as fast inside it.
+    """
+    section = section_of(project, section_id)
+    if factor not in {0.5, 2.0}:
+        raise ValueError("This changes the feel to half time or double time")
+    length = section.bars * 4
+    wanted = {r.lower() for r in roles} if roles else None
+    actions: list[Action] = []
+    for track in editable(project):
+        if wanted and track.role not in wanted and track.name.lower() not in wanted:
+            continue
+        clip = next((c for c in track.clips if c.section_id == section_id), None)
+        if not clip or not clip.notes:
+            continue
+        notes = []
+        for note in clip.notes:
+            start = note.start / factor if factor > 1 else note.start * (1 / factor)
+            duration = note.duration / factor if factor > 1 else note.duration * (1 / factor)
+            if start >= length - 1e-6:
+                continue
+            notes.append({"pitch": note.pitch, "start": round(start, 4), "duration": round(min(duration, length - start), 4), "velocity": note.velocity})
+        if factor > 1:
+            # Twice as fast leaves the back half empty; repeat it so the
+            # section is still full, which is what "double time" sounds like.
+            repeats = int(factor)
+            block = length / repeats
+            notes = [{**n, "start": round(n["start"] + copy * block, 4)} for copy in range(repeats) for n in notes if n["start"] + copy * block < length - 1e-6]
+        if notes:
+            actions.append(Action(kind="notes", track=track.id, section=section_id, params={"operation": "replace", "notes": notes}))
+    if not actions:
+        raise ValueError("There is nothing in this section to change the feel of")
+    return actions
+
+
+MOVES = {"buildup": buildup, "drop": drop, "breakdown": breakdown, "fade": fade, "layer": layer, "pump": pump, "transition": transition, "riser": riser, "double_time": double_time}
 
 # Moves that change how tracks behave everywhere rather than inside one
 # section, so the engine must not hand them a section to work in.
@@ -171,4 +267,7 @@ DESCRIPTIONS = {
     "fade": "brings every track down together over the length you choose",
     "layer": "copies a part onto a new track with a different sound so the two play together",
     "pump": "ducks every instrument part under the kick so the track breathes with the beat",
+    "transition": "sweeps the filters open at the end of a section, leaves a gap, and starts the next one on a crash",
+    "riser": "sweeps a noise riser up into the end of the section on its own track",
+    "double_time": "plays the same parts at half or double speed without changing the tempo",
 }

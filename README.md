@@ -17,6 +17,8 @@ Most music tools want parameter names. RDX wants sentences.
 > *"The lead sounds too harsh, warm it up."*
 > *"Give me a kick pattern with a double clap."*
 > *"Sidechain the pads to the kick so it pumps."*
+> *"The bass should follow the chords."*
+> *"There are too many notes in the melody — give it room to breathe."*
 > *"Build this section up and let everything suddenly fade at the end."*
 > *"Turn the humming I recorded into a chord progression on the strings."*
 
@@ -88,6 +90,22 @@ density and variation controls. Hum a line into the microphone and RDX works
 out whether you gave it chord roots or a melody, infers the progression, and
 voices it with smooth voice leading. Tap a rhythm and it becomes a drum part.
 
+**Harmony with colour.** Sevenths, ninths, sixths, add9 and suspensions, all
+derived from the key rather than looked up: in A minor the VII is G7 and the
+III is Cmaj7, both major triads with different sevenths. Where a suspension
+would be a tritone rather than a fourth, RDX leaves the triad alone instead of
+writing a chord that sounds like a mistake.
+
+**Phrase shape.** *"Too many notes"*, *"let it climb at the end"*, *"it's too
+repetitive"* — operations on a melody's contour and density rather than on
+individual notes. Pitches move by scale degree, so shaping can never take a
+melody out of the key.
+
+**Parts written against parts.** The bass follows the chords; a counter-melody
+plays in the gaps the kick leaves; a harmony line sits a third above in the key.
+Every generator used to work from the key alone, which is why none of these
+had an answer before.
+
 **Sound design.** Eleven synthesized instruments — supersaw, saw, pluck, sine,
 sub, pad, strings, choir, bell, FM, and a noise source for risers. Filter,
 resonance, envelope, three-band EQ, drive, echo and reverb, plus a motion
@@ -114,8 +132,17 @@ rendered and identical in playback and export.
 ![The mixer, with each channel's ducking source and depth](docs/studio-mixer.png)
 
 **Production moves.** *buildup* (with an optional cut at the end), *drop*,
-*breakdown*, *fade*, *layer* and *pump*. Each expands into ordinary edits you
-can see, inspect and undo as a single step.
+*breakdown*, *fade*, *layer*, *pump*, *transition*, *riser* and *double time*.
+Each expands into ordinary edits you can see, inspect and undo as a single step.
+
+**Mix judgement, measured.** *"The mix is muddy"* and *"the kick and bass are
+fighting"* are claims about the finished sound, so RDX measures instead of
+guessing: it renders every track as a stem and reports band energy, where two
+parts collide, dynamic range, stereo correlation and integrated loudness by the
+BS.1770-4 method streaming services use. Findings carry the number that produced
+them — *"31% of the energy sits between 200 and 400 Hz"* — and each one proposes
+an edit RDX can actually make. **It refuses to correct a mix it has not
+measured.**
 
 **Arrangement and mixing.** Sections you can add, duplicate, resize and reorder;
 track duplication, naming and protection; a mixer with real meters; master
@@ -202,7 +229,10 @@ Kept here deliberately, because a capability list without one is marketing.
   good, but they are synthesized — the strings are a detuned ensemble with
   vibrato, not an orchestra.
 - No spoken instructions, no polyphonic audio-to-MIDI, no audio slicing or
-  chopping, no tape stop, no vocoder, no perceptual mastering judgement.
+  chopping, no tape stop, no vocoder.
+- Mix analysis measures the audio, but taste is not in it. It can tell you 31%
+  of the energy is in the low mids; it cannot tell you whether that is right for
+  the record you are making.
 - 4/4 only. Up to 24 tracks, 16 sections, 256 bars, one clip per track and
   section. Hum and rhythm analysis is capped at 30 seconds; imports at five
   minutes.

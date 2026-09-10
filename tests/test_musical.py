@@ -764,3 +764,72 @@ def test_a_counter_rhythm_to_a_kit_answers_the_kick_rather_than_failing(project,
     main = next(s for s in after.sections if s.name == "Main")
     clip = next(c for c in next(t for t in after.tracks if t.role == "lead").clips if c.section_id == main.id)
     assert clip.notes and all(n.start + n.duration <= main.bars * 4 + 1e-9 for n in clip.notes)
+
+
+# --- the wider move library ------------------------------------------------
+
+
+def test_a_transition_sweeps_out_leaves_a_gap_and_crashes_in(project, selection):
+    after = apply_actions(project, [Action(kind="move", section="Build", params={"name": "transition"})], selection)
+    build = next(s for s in after.sections if s.name == "Build")
+    main = next(s for s in after.sections if s.name == "Main")
+    lead = next(t for t in after.tracks if t.role == "lead")
+    sweep = next(a for a in lead.automation if a.parameter == "cutoff" and a.section_id == build.id)
+    assert sweep.points[-1][1] > sweep.points[0][1], "the filters open into the join"
+    level = next(a for a in lead.automation if a.parameter == "volume_db" and a.section_id == build.id)
+    assert level.points[-1][1] <= -60, "and everything drops for the gap"
+    kit = next(t for t in after.tracks if t.role == "drums")
+    crashes = [n for c in kit.clips if c.section_id == main.id for n in c.notes if n.pitch == drums.CRASH]
+    assert crashes and crashes[0].start == 0.0, "the next section starts on a crash"
+
+
+def test_a_riser_is_its_own_move_and_reuses_its_own_track(project, selection):
+    once = apply_actions(project, [Action(kind="move", section="Build", params={"name": "riser"})], selection)
+    twice = apply_actions(once, [Action(kind="move", section="Main", params={"name": "riser"})], selection)
+    assert len([t for t in twice.tracks if t.name == "Riser"]) == 1, "one riser track, not one per use"
+    riser = next(t for t in twice.tracks if t.name == "Riser")
+    assert {a.section_id for a in riser.automation} == {s.id for s in twice.sections if s.name in {"Build", "Main"}}
+
+
+def test_a_riser_over_part_of_a_section_starts_late(project, selection):
+    after = apply_actions(project, [Action(kind="move", section="Main", params={"name": "riser", "bars": 2})], selection)
+    main = next(s for s in after.sections if s.name == "Main")
+    clip = next(c for c in next(t for t in after.tracks if t.name == "Riser").clips if c.section_id == main.id)
+    assert clip.notes[0].start == main.bars * 4 - 8, "two bars of riser at the end of an eight bar section"
+
+
+def test_double_time_keeps_the_tempo_and_doubles_the_part(project, selection):
+    after = apply_actions(project, [Action(kind="move", section="Main", params={"name": "double_time", "roles": ["drums"]})], selection)
+    assert after.tempo == project.tempo, "double time is a feel, not a tempo change"
+    main = next(s for s in after.sections if s.name == "Main")
+    before = next(c for c in next(t for t in project.tracks if t.role == "drums").clips if c.section_id == main.id)
+    now = next(c for c in next(t for t in after.tracks if t.role == "drums").clips if c.section_id == main.id)
+    assert len(now.notes) > len(before.notes)
+    kicks_before = sorted(n.start for n in before.notes if n.pitch == drums.KICK)
+    kicks_after = sorted(n.start for n in now.notes if n.pitch == drums.KICK)
+    assert len(kicks_after) >= 2 * len(kicks_before) - 1, "twice as many kicks in the same span"
+
+
+def test_half_time_thins_the_part_out(project, selection):
+    after = apply_actions(project, [Action(kind="move", section="Main", params={"name": "double_time", "factor": 0.5, "roles": ["drums"]})], selection)
+    main = next(s for s in after.sections if s.name == "Main")
+    before = next(c for c in next(t for t in project.tracks if t.role == "drums").clips if c.section_id == main.id)
+    now = next(c for c in next(t for t in after.tracks if t.role == "drums").clips if c.section_id == main.id)
+    assert len(now.notes) < len(before.notes)
+
+
+def test_every_move_stays_inside_its_section(project, selection):
+    for name in moves.MOVES:
+        if name in moves.WHOLE_TRACK_MOVES or name == "layer":
+            continue
+        after = apply_actions(project, [Action(kind="move", section="Main", params={"name": name})], selection)
+        main = next(s for s in after.sections if s.name == "Main")
+        for track in after.tracks:
+            for clip in track.clips:
+                if clip.section_id == main.id:
+                    assert all(n.start + n.duration <= main.bars * 4 + 1e-6 for n in clip.notes), name
+
+
+def test_an_unknown_move_is_refused_by_name(project, selection):
+    with pytest.raises(Unsupported, match="transition"):
+        apply_actions(project, [Action(kind="move", section="Main", params={"name": "tapestop"})], selection)
