@@ -20,7 +20,7 @@ from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from . import audio
 from .bridge import Bridge
-from .domain import Clip, EditRequest, Model, Project, new_track, uid
+from .domain import Clip, EditRequest, Model, Plan, Project, new_track, uid
 from .musical.describe import describe
 from .engine import Unsupported, apply_actions, context, starter_project
 from .model import DATA, ROOT, LocalModel
@@ -251,7 +251,9 @@ def apply_decision(proposal_id: str, request: Decision):
     original = store.get(proposed["project_id"])
     if original.revision != request.revision or proposed["revision"] != request.revision:
         raise Conflict("The project changed after this alternative was prepared")
-    if request.keep:
+    # A proposal with no actions is a question or a refusal. Accepting one must
+    # not write a no-op into the history the user has to undo past.
+    if request.keep and proposed["plan"].actions:
         label = proposed["summary"].replace("\n", "; ")[:150] or "Edit"
         original = store.save(apply_actions(original, proposed["plan"].actions, proposed.get("selection")), request.revision, label)
     store.feedback(original.id, original.revision, proposed["request"], proposed["context"], proposed["plan"].model_dump(), "accepted" if request.keep else "rejected", request.comment)

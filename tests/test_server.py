@@ -10,6 +10,7 @@ from rdx.bridge import Bridge
 from rdx.domain import Action, Plan
 from rdx.engine import starter_project
 from rdx.store import Store
+import time
 
 
 @pytest.fixture
@@ -106,3 +107,27 @@ def test_bridge_delivery_is_not_repeated():
         bridge.acknowledge({"id":"wrong"})
     bridge.acknowledge({"id":job,"ok":True,"message":"Done"})
     assert not bridge.status()["pending"]
+
+
+def test_accepting_a_refusal_does_not_write_history(client):
+    """A proposal with no actions is a question, not an edit."""
+    from rdx import server
+
+    project = client.post("/api/projects", json={"name": "Refusal", "starter": True}).json()
+    proposal_id = "a" * 12
+    server.proposals[proposal_id] = {
+        "project_id": project["id"],
+        "revision": project["revision"],
+        "request": "sidechain the pads",
+        "context": {},
+        "selection": None,
+        "plan": server.Plan(actions=[], note="RDX has no sidechain."),
+        "summary": "RDX has no sidechain.",
+        "created": time.time(),
+    }
+    before = client.get(f"/api/projects/{project['id']}/history").json()
+    kept = client.post(f"/api/proposals/{proposal_id}", json={"revision": project["revision"], "keep": True})
+    assert kept.status_code == 200
+    assert kept.json()["revision"] == project["revision"]
+    after = client.get(f"/api/projects/{project['id']}/history").json()
+    assert after["entries"] == before["entries"]
