@@ -13,7 +13,7 @@ from pathlib import Path
 
 import pytest
 
-from rdx.domain import Action, Clip, DRUM_MAP, Kit, LFO_TARGETS, Note, SCALES, SCALE_STEPS, Sound, WAVES
+from rdx.domain import Action, AUTOMATABLE, AUTOMATION_RANGES, Clip, DRUM_MAP, Kit, LFO_TARGETS, Note, SCALES, SCALE_STEPS, Sound, WAVES
 from rdx.engine import EditError, Unsupported, apply_actions, starter_project
 from rdx.musical import design, drums, harmony, melody, moves, parts, sidechain
 from rdx.musical.character import CHARACTERS, character_changes
@@ -1181,3 +1181,89 @@ def test_the_scales_offered_in_the_studio_all_exist_in_python():
     block = re.search(r"const SCALES = \[(.*?)\];", source, re.S)
     assert block, "src/App.tsx must list the scales it offers"
     assert set(re.findall(r'"(\w+)"', block.group(1))) == set(SCALES)
+
+
+# --- copying material between sections -------------------------------------
+
+
+def test_copying_a_section_fills_one_that_already_exists(project, selection):
+    after = apply_actions(project, [Action(kind="arrange", section="Outro", params={"operation": "copy", "from_section": "Main"})], selection)
+    assert len(after.sections) == len(project.sections), "copy fills a section; duplicate makes one"
+    main = next(s for s in after.sections if s.name == "Main")
+    outro = next(s for s in after.sections if s.name == "Outro")
+    lead = next(t for t in after.tracks if t.role == "lead")
+    source = next(c for c in lead.clips if c.section_id == main.id)
+    copied = next(c for c in lead.clips if c.section_id == outro.id)
+    limit = outro.bars * 4
+    assert [(n.pitch, n.start) for n in copied.notes] == [(n.pitch, n.start) for n in source.notes if n.start < limit]
+
+
+def test_a_copy_never_reuses_a_note_identity(project, selection):
+    after = apply_actions(project, [Action(kind="arrange", section="Outro", params={"operation": "copy", "from_section": "Main"})], selection)
+    ids = [n.id for t in after.tracks for c in t.clips for n in c.notes]
+    assert len(ids) == len(set(ids))
+
+
+def test_copying_only_the_tracks_that_were_named(project, selection):
+    after = apply_actions(project, [Action(kind="arrange", section="Outro", params={"operation": "copy", "from_section": "Main", "tracks": ["bass"]})], selection)
+    outro = next(s for s in after.sections if s.name == "Outro")
+    before = {t.role: len([c for c in t.clips if c.section_id == outro.id]) for t in project.tracks}
+    now = {t.role: len([c for c in t.clips if c.section_id == outro.id]) for t in after.tracks}
+    assert now["bass"] == 1
+    assert now["lead"] == before["lead"], "the lead was not named, so it was left alone"
+
+
+def test_automation_travels_with_the_copy_and_stays_in_range(project, selection):
+    built = apply_actions(project, [Action(kind="move", section="Main", params={"name": "buildup", "riser": False, "roll": False})], selection)
+    after = apply_actions(built, [Action(kind="arrange", section="Outro", params={"operation": "copy", "from_section": "Main"})], selection)
+    outro = next(s for s in after.sections if s.name == "Outro")
+    lanes = [a for t in after.tracks for a in t.automation if a.section_id == outro.id]
+    assert lanes, "a copied section should bring its automation"
+    assert all(point[0] <= outro.bars * 4 + 1e-9 for lane in lanes for point in lane.points)
+
+
+def test_a_section_cannot_be_copied_onto_itself(project, selection):
+    with pytest.raises(EditError, match="already itself"):
+        apply_actions(project, [Action(kind="arrange", section="Main", params={"operation": "copy", "from_section": "Main"})], selection)
+
+
+def test_copying_into_a_protected_section_is_refused(project, selection):
+    locked = apply_actions(project, [Action(kind="protect", track="drums", params={"locked": True})], selection)
+    with pytest.raises(EditError, match="protected"):
+        apply_actions(locked, [Action(kind="arrange", section="Main", params={"operation": "copy", "from_section": "Intro"})], selection)
+
+
+def test_copying_from_an_empty_section_says_so(project, selection):
+    empty = apply_actions(project, [Action(kind="arrange", params={"operation": "add", "name": "Empty", "bars": 4})], selection)
+    with pytest.raises(EditError, match="nothing in Empty"):
+        apply_actions(empty, [Action(kind="arrange", section="Outro", params={"operation": "copy", "from_section": "Empty"})], selection)
+
+
+def test_every_automatable_parameter_reaches_a_real_signal():
+    """A curve on a parameter the audio engine cannot route is a silent no-op."""
+    chain = (ROOT / "src/audio/effects.ts").read_text()
+    block = re.search(r"export type Chain = \{(.*?)\n\};", chain, re.S)
+    assert block, "src/audio/effects.ts must export a Chain type"
+    exposed = set(re.findall(r"^\s+(\w+)\??:\s*Automatable", block.group(1), re.M))
+    # The mixer owns these two; everything else has to come from the chain.
+    assert set(AUTOMATABLE) - {"volume_db", "pan"} == exposed
+
+
+def test_a_curve_can_be_drawn_on_every_automatable_parameter(project, selection):
+    for parameter, (low, high) in AUTOMATION_RANGES.items():
+        points = [[0, low], [8, high]]
+        after = apply_actions(project, [Action(kind="automation", track="lead", section="Main", params={"parameter": parameter, "points": points})], selection)
+        lead = next(t for t in after.tracks if t.role == "lead")
+        assert any(a.parameter == parameter for a in lead.automation), parameter
+
+
+def test_a_curve_outside_a_parameter_range_is_refused_in_plain_language(project, selection):
+    with pytest.raises(EditError) as caught:
+        apply_actions(project, [Action(kind="automation", track="lead", section="Main", params={"parameter": "drive", "points": [[0, 0], [8, 5]]})], selection)
+    assert "between 0 and 0.8" in str(caught.value)
+    assert "pydantic" not in str(caught.value) and "validation error" not in str(caught.value).lower()
+
+
+def test_a_curve_on_something_that_is_not_a_parameter_is_refused_by_name(project, selection):
+    with pytest.raises(Unsupported, match="cutoff"):
+        apply_actions(project, [Action(kind="automation", track="lead", section="Main", params={"parameter": "tempo", "points": [[0, 100], [8, 128]]})], selection)

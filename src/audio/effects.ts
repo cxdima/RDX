@@ -16,6 +16,10 @@ export type Chain = {
     reverb?: Automatable;
     flanger?: Automatable;
     chorus?: Automatable;
+    drive?: Automatable;
+    width?: Automatable;
+    delay?: Automatable;
+    crush?: Automatable;
   };
   nodes: { dispose(): unknown }[];
 };
@@ -51,23 +55,32 @@ export function createChain(
   const eq = keep(new Tone.EQ3(sound.low, sound.mid, sound.high));
   const stages: Tone.ToneAudioNode[] = [eq];
 
-  if (used("drive"))
-    stages.push(
-      keep(
-        new Tone.Distortion({
-          distortion: sound.drive,
-          wet: sound.drive > 0 ? 0.4 : 0,
-        }),
-      ),
+  let driveParam: Automatable | undefined;
+  if (used("drive")) {
+    const distortion = keep(
+      new Tone.Distortion({
+        distortion: Math.max(sound.drive, 0.4),
+        wet: sound.drive > 0 ? 0.4 : 0,
+      }),
     );
+    driveParam = distortion.wet;
+    stages.push(distortion);
+  }
 
   // Bit reduction: 16 bits is transparent, 2 is destroyed, and the control
   // runs the other way round so that "more crush" means more of it.
+  let crushParam: Automatable | undefined;
   if (used("crush")) {
     const crusher = keep(
-      new Tone.BitCrusher(Math.max(1, Math.round(16 - sound.crush * 14))),
+      new Tone.BitCrusher(
+        Math.max(1, Math.round(16 - Math.max(sound.crush, 0.5) * 14)),
+      ),
     );
-    crusher.wet.value = Math.min(1, 0.35 + sound.crush * 0.65);
+    crusher.wet.value = Math.min(
+      1,
+      sound.crush > 0 ? 0.35 + sound.crush * 0.65 : 0,
+    );
+    crushParam = crusher.wet;
     stages.push(crusher);
   }
 
@@ -155,21 +168,27 @@ export function createChain(
       ),
     );
 
-  if (used("width"))
-    stages.push(
-      keep(new Tone.StereoWidener({ width: 0.5 + sound.width * 0.5 })),
+  let widthParam: Automatable | undefined;
+  if (used("width")) {
+    const widener = keep(
+      new Tone.StereoWidener({ width: 0.5 + sound.width * 0.5 }),
     );
+    widthParam = widener.width;
+    stages.push(widener);
+  }
 
-  if (used("delay"))
-    stages.push(
-      keep(
-        new Tone.FeedbackDelay({
-          delayTime: secondsPerBeat * 0.75,
-          feedback: 0.25,
-          wet: sound.delay,
-        }),
-      ),
+  let delayParam: Automatable | undefined;
+  if (used("delay")) {
+    const echo = keep(
+      new Tone.FeedbackDelay({
+        delayTime: secondsPerBeat * 0.75,
+        feedback: 0.25,
+        wet: sound.delay,
+      }),
     );
+    delayParam = echo.wet;
+    stages.push(echo);
+  }
 
   let reverbParam: Automatable | undefined;
   if (used("reverb")) {
@@ -205,6 +224,10 @@ export function createChain(
       reverb: reverbParam,
       flanger: flangerParam,
       chorus: chorusParam,
+      drive: driveParam,
+      width: widthParam,
+      delay: delayParam,
+      crush: crushParam,
     },
     nodes,
   };

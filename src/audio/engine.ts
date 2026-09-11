@@ -179,20 +179,14 @@ export class StudioAudio {
       }
 
       for (const lane of track.automation) {
+        // Every automatable name in rdx/domain.py has to land on a real signal
+        // here; a test asserts the two lists stay the same length.
         const parameter =
-          lane.parameter === "cutoff"
-            ? chain.params.cutoff
-            : lane.parameter === "resonance"
-              ? chain.params.resonance
-              : lane.parameter === "volume_db"
-                ? channel.volume
-                : lane.parameter === "pan"
-                  ? channel.pan
-                  : lane.parameter === "flanger"
-                    ? chain.params.flanger
-                    : lane.parameter === "chorus"
-                      ? chain.params.chorus
-                      : chain.params.reverb;
+          lane.parameter === "volume_db"
+            ? channel.volume
+            : lane.parameter === "pan"
+              ? channel.pan
+              : chain.params[lane.parameter as keyof typeof chain.params];
         if (!parameter) continue;
         transport.schedule(
           (time) => {

@@ -47,7 +47,11 @@ MELODIC_PRESETS = tuple(p for p in PRESETS if p not in {"drumkit", "audio"})
 # tests/test_musical.py asserts the two stay identical.
 DRUM_MAP = {36: "Kick", 37: "Rim", 38: "Snare", 39: "Clap", 42: "Hat", 44: "Pedal", 46: "Open", 45: "Low tom", 47: "Mid tom", 50: "High tom", 49: "Crash", 51: "Ride"}
 
-AUTOMATION_RANGES = {"cutoff": (60, 20000), "resonance": (0.1, 15), "volume_db": (-60, 6), "pan": (-1, 1), "reverb": (0, 1), "flanger": (0, 1), "chorus": (0, 1)}
+# Parameters a curve can be drawn on. Each one has to be a real signal in the
+# audio engine, not just a field on the model: src/audio/engine.ts routes every
+# name here to a node, and tests/test_musical.py asserts the two lists match.
+AUTOMATION_RANGES = {"cutoff": (60, 20000), "resonance": (0.1, 15), "volume_db": (-60, 6), "pan": (-1, 1), "reverb": (0, 1), "flanger": (0, 1), "chorus": (0, 1), "drive": (0, 0.8), "width": (0, 1), "delay": (0, 0.8), "crush": (0, 1)}
+AUTOMATABLE = tuple(AUTOMATION_RANGES)
 
 
 # The scales RDX writes in, as semitones above the root. Modes are not an
@@ -170,7 +174,7 @@ class Sidechain(Model):
 
 
 class Automation(Model):
-    parameter: Literal["cutoff", "resonance", "volume_db", "pan", "reverb", "flanger", "chorus"]
+    parameter: Literal[AUTOMATABLE]  # type: ignore[valid-type]
     section_id: str
     points: list[tuple[float, float]] = Field(min_length=2, max_length=64)
 

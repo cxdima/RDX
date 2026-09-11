@@ -427,7 +427,17 @@ def intents() -> list[Intent]:
             "sweep the {track} filter up through this part",
             "I want the {track} to open up over the section",
         ), lambda scene, rng: ([act("automation", {"parameter": "cutoff", "points": [[0, 600], [scene.selected_bars * 4, 14000]]}, track=scene.name(scene.selected_role), section="selected")], "")),
-        Intent("master_ceiling", (
+        Intent("drive_sweep", (
+            "bring the drive up across this section on the {track}",
+            "make the {track} get dirtier through the build",
+            "push the distortion up over this part",
+        ), lambda scene, rng: ([act("automation", {"parameter": "drive", "points": [[0, 0], [scene.selected_bars * 4, 0.6]]}, track=scene.name(scene.selected_role), section="selected")], "")),
+        Intent("width_sweep", (
+            "open the stereo up across this section",
+            "let the {track} spread out over the section",
+            "widen the {track} as it goes",
+        ), lambda scene, rng: ([act("automation", {"parameter": "width", "points": [[0, 0], [scene.selected_bars * 4, 1]]}, track=scene.name(scene.selected_role), section="selected")], "")),
+                Intent("master_ceiling", (
             "set the limiter ceiling to minus two",
             "put the output ceiling at -2 dB",
             "cap the master at minus two dB",
@@ -483,6 +493,20 @@ def intents() -> list[Intent]:
             "tell me what needs fixing in the mix",
             "how does the mix look",
         ), refuse("I have not measured this mix yet. Analyse it in the mixer and I will tell you what is actually in it.")),
+    ]
+
+    items += [
+        Intent("copy_section", (
+            "make the second drop the same as the first",
+            "copy the main part into the outro",
+            "put what's in this section into the next one as well",
+            "reuse the drop material later in the track",
+        ), lambda scene, rng: ([act("arrange", {"operation": "copy", "from_section": scene.selected_section}, section="Outro")], "")),
+        Intent("copy_one_part", (
+            "copy just the bass across",
+            "use the same bassline in the outro",
+            "bring only the drums over from that section",
+        ), lambda scene, rng: ([act("arrange", {"operation": "copy", "from_section": scene.selected_section, "tracks": [rng.choice(["bass", "drums"])]}, section="Outro")], "")),
     ]
 
     items += [

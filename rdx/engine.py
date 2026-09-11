@@ -3,7 +3,7 @@ from __future__ import annotations
 import random
 import math
 
-from .domain import Action, Automation, Clip, Kit, Master, MELODIC_PRESETS, Note, PITCH_CLASSES, PRESET_DEFAULTS, SCALE_STEPS, Project, Section, Sidechain, Sound, Track, new_track, uid
+from .domain import Action, AUTOMATION_RANGES, Automation, Clip, Kit, Master, MELODIC_PRESETS, Note, PITCH_CLASSES, PRESET_DEFAULTS, SCALE_STEPS, Project, Section, Sidechain, Sound, Track, new_track, uid
 from .musical import character as character_module
 from .musical import design as design_module
 from .musical import drums as drums_module
@@ -48,6 +48,10 @@ def parameter_types(params: dict):
             raise EditError(f"{key} must be text")
     if "notes" in params and (not isinstance(params["notes"], list) or any(not isinstance(n, dict) for n in params["notes"])):
         raise EditError("Notes must be a list of note objects")
+
+
+def count_parts(number: int) -> str:
+    return f"{number} part" + ("" if number == 1 else "s")
 
 
 def validated(project: Project) -> Project:
@@ -306,7 +310,7 @@ def apply_actions(original: Project, actions: list[Action], selection: dict | No
             project.tracks.append(track)
             continue
         if action.kind == "arrange":
-            keys(p, {"operation", "name", "bars", "energy", "index"})
+            keys(p, {"operation", "name", "bars", "energy", "index", "from_section", "tracks"})
             operation = p.get("operation", "add")
             if operation == "add":
                 project.sections.append(Section(name=p.get("name", "Section"), bars=p.get("bars", 8), energy=p.get("energy", 0.7)))
@@ -317,7 +321,7 @@ def apply_actions(original: Project, actions: list[Action], selection: dict | No
             section = section[0]
             # Only operations that would move, copy or shorten protected notes
             # are blocked. Renaming a section or changing its energy is safe.
-            disturbs_material = operation in {"duplicate", "remove", "move"} or (operation == "update" and "bars" in p)
+            disturbs_material = operation in {"duplicate", "remove", "move", "copy"} or (operation == "update" and "bars" in p)
             if disturbs_material and any((t.locked or t.id in originally_locked) and any(c.section_id == section.id for c in t.clips) for t in project.tracks):
                 raise EditError("This section contains protected material")
             if operation == "duplicate":
@@ -342,6 +346,47 @@ def apply_actions(original: Project, actions: list[Action], selection: dict | No
                 for track in project.tracks:
                     track.clips = [c for c in track.clips if c.section_id != section.id]
                     track.automation = [a for a in track.automation if a.section_id != section.id]
+            elif operation == "copy":
+                # "Make the second drop like the first." Duplicating a section
+                # makes a new one; this fills a section that already exists,
+                # which is how an arrangement gets its repeats.
+                sources = target_sections(project, p.get("from_section"), selection)
+                if len(sources) != 1:
+                    raise EditError("Say which one section to copy from")
+                source = sources[0]
+                if source.id == section.id:
+                    raise EditError(f"{section.name} is already itself; name the section to copy from")
+                wanted = {str(name).lower() for name in p.get("tracks") or []}
+                length = section.bars * 4
+                copied = 0
+                for track in project.tracks:
+                    if wanted and track.id not in wanted and track.name.lower() not in wanted and track.role not in wanted:
+                        continue
+                    if track.locked or track.id in originally_locked:
+                        continue
+                    original_clip = next((c for c in track.clips if c.section_id == source.id), None)
+                    track.clips = [c for c in track.clips if c.section_id != section.id]
+                    track.automation = [a for a in track.automation if a.section_id != section.id]
+                    if original_clip is None:
+                        continue
+                    copy = original_clip.model_copy(deep=True)
+                    copy.id, copy.section_id = uid(), section.id
+                    # A shorter destination keeps what fits rather than failing.
+                    copy.notes = [n for n in copy.notes if n.start < length]
+                    for note in copy.notes:
+                        note.id, note.duration = uid(), min(note.duration, length - note.start)
+                    track.clips.append(copy)
+                    for lane in [a for a in track.automation if a.section_id == source.id]:
+                        moved = lane.model_copy(update={"section_id": section.id}, deep=True)
+                        points = [(round(min(beat, length), 4), value) for beat, value in moved.points]
+                        deduped = [point for index, point in enumerate(points) if index == 0 or point[0] > points[index - 1][0]]
+                        if len(deduped) >= 2:
+                            track.automation.append(moved.model_copy(update={"points": deduped}))
+                    copied += 1
+                if not copied:
+                    raise EditError(f"There is nothing in {source.name} to copy into {section.name}")
+                if findings is not None:
+                    findings.append(f"Copied {count_parts(copied)} from {source.name} into {section.name}.")
             elif operation == "move":
                 index = p.get("index")
                 if not isinstance(index, int) or not 0 <= index < len(project.sections):
@@ -644,7 +689,14 @@ def apply_actions(original: Project, actions: list[Action], selection: dict | No
                         if p.get("operation") == "remove":
                             track.automation = [a for a in track.automation if not (a.section_id == section.id and a.parameter == p.get("parameter"))]
                             continue
-                        lane = Automation(section_id=section.id, **{k:v for k,v in p.items() if k != "operation"})
+                        parameter = p.get("parameter")
+                        if parameter not in AUTOMATION_RANGES:
+                            raise Unsupported(f"RDX cannot draw a curve on '{parameter}'. It can automate: {', '.join(AUTOMATION_RANGES)}.")
+                        try:
+                            lane = Automation(section_id=section.id, **{k: v for k, v in p.items() if k != "operation"})
+                        except ValueError as error:
+                            low, high = AUTOMATION_RANGES[parameter]
+                            raise EditError(f"That {parameter} curve does not fit: every value has to be between {low:g} and {high:g}, and the points have to move forwards in time.") from error
                         track.automation = [a for a in track.automation if not (a.section_id == section.id and a.parameter == lane.parameter)] + [lane]
                     elif action.kind == "notes" and not clip and p.get("operation", "replace") in {"replace", "add"}:
                         keys(p, {"notes", "operation"})

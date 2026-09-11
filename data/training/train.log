@@ -18,3 +18,4 @@ Calculating loss...: 100%|██████████| 8/8 [00:26<00:00,  3.2
 Calculating loss...: 100%|██████████| 8/8 [00:26<00:00,  3.26s/it]
 Iter 1: Val loss 5.528, Val took 26.101s
 Iter 20: Train loss 1.486, Learning Rate 1.968e-05, It/sec 0.077, Tokens/sec 8.506, Trained Tokens 2202, Peak mem 16.203 GB
+Iter 40: Train loss 0.396, Learning Rate 3.935e-05, It/sec 0.077, Tokens/sec 9.034, Trained Tokens 4534, Peak mem 16.203 GB
