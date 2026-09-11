@@ -116,7 +116,10 @@ RDX_ADAPTER=data/models/rdx-v2 .venv/bin/python -m rdx.promote
 3. **Model output is data, never code.** It is parsed as JSON, validated against
    `Action`, and executed by the engine. Never `eval`, shell out, or let it
    choose a file path.
-4. **Never claim the Ableton bridge is verified.** A real Live API handshake and
+4. **Never claim the Ableton bridge is verified.** `scripts/bridge_selftest.py`
+   proves the studio's half works by pretending to be the device — token auth,
+   polling and state tracking all pass. That narrows a failure to inside Max;
+   it does not verify the bridge. A real Live API handshake and
    transfer has not been confirmed. It stays labelled experimental until someone
    watches it work in Live. Live is **12.4.5** — `Track.insert_device` exists
    (12.3+, native devices only) but writing automation envelopes still does not.

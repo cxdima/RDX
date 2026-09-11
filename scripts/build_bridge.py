@@ -26,7 +26,7 @@ def build():
     box('output', 'plugout~', [20, 390, 60, 22], numinlets=2, numoutlets=2)
     wire('input', 0, 'output');wire('input', 1, 'output', 1)
     box('live', f'js "{ROOT / "bridge/live.js"}"', [20, 200, 400, 22], numinlets=1, numoutlets=2)
-    box('node', f'node.script "{ROOT / "bridge/connection.cjs"}" @autostart 1', [20, 260, 620, 22], numinlets=1, numoutlets=2)
+    box('node', f'node.script "{ROOT / "bridge/connection.js"}" @autostart 1', [20, 260, 620, 22], numinlets=1, numoutlets=2)
     box('defer', 'deferlow', [470, 200, 65, 22], numinlets=1, numoutlets=1)
     wire('live', 0, 'node');wire('node', 0, 'defer');wire('defer', 0, 'live')
     box('device', 'live.thisdevice', [20, 20, 100, 22], numinlets=1, numoutlets=3)

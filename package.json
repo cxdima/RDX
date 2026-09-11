@@ -10,7 +10,7 @@
     "check": "tsc --noEmit",
     "test": ".venv/bin/python -m pytest -q",
     "test:browser": "playwright test",
-    "format": "prettier --write src bridge/connection.cjs scripts/*.mjs tests/browser playwright.config.ts vite.config.ts"
+    "format": "prettier --write src bridge/connection.js scripts/*.mjs tests/browser playwright.config.ts vite.config.ts"
   },
   "dependencies": {
     "lucide-react": "^0.468.0",

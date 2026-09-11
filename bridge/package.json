@@ -1,0 +1,7 @@
+{
+  "name": "rdx-bridge",
+  "private": true,
+  "//": "The repository root declares type: module for Vite. Node for Max loads connection.js with its own bundled Node, which would then parse a CommonJS script as an ES module and fail before it can report why. This file scopes that back to commonjs for the bridge directory only.",
+  "type": "commonjs",
+  "main": "connection.js"
+}
