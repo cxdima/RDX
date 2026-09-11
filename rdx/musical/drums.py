@@ -110,11 +110,15 @@ def snare_roll(bars: int, start_bar: int) -> list[tuple[float, int]]:
     return hits
 
 
-def build(bars: int, kit: str | None = None, layers: dict[str, str] | None = None, *, density: float = 0.7, seed: int = 0, crash: bool = False, fill: bool = False) -> list[Note]:
+def build(bars: int, kit: str | None = None, layers: dict[str, str] | None = None, *, density: float = 0.7, seed: int = 0, crash: bool = False, fill: bool = False, pickup: bool = True) -> list[Note]:
     """Render a kit into notes for a section of the given length.
 
     density thins or thickens the busiest layers and controls ghost notes;
     it never removes the kick, which is the part a producer counts on.
+
+    `pickup` is the extra kick before the bar line at high density. It lifts
+    most patterns and ruins the one genre whose bass already fills that gap, so
+    it can be turned off.
     """
     if not 0 <= density <= 1:
         raise ValueError("Density must be between zero and one")
@@ -147,7 +151,7 @@ def build(bars: int, kit: str | None = None, layers: dict[str, str] | None = Non
         if fill and last_bar:
             for step, pitch in enumerate((HIGH_TOM, HIGH_TOM, MID_TOM, LOW_TOM)):
                 add(pitch, offset + 3 + step * 0.25, 88 + step * 4, 0.2)
-        elif density > 0.75 and last_bar and chosen.get("kick", "none") != "none":
+        elif pickup and density > 0.75 and last_bar and chosen.get("kick", "none") != "none":
             add(KICK, offset + 3.75, 74)  # a small pickup into the next bar
     return sorted(notes, key=lambda n: (n.start, n.pitch))
 

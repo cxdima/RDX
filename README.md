@@ -87,6 +87,22 @@ npm run test:browser   # Playwright against the real built app
 
 ## What it can do
 
+**Whole records, by genre.** *"Make me a trance record"* builds one: 138 BPM in
+a minor key, a club structure with two drops and a breakdown, a 909 kit, an
+offbeat bassline that plays *between* every kick, supersaw chords on the
+progression, everything ducking under the kick. Five genres — *trance,
+psytrance, techno, house, hardstyle* — each a readable recipe in
+[`genres.py`](rdx/musical/genres.py) rather than a prompt, because a model asked
+to invent a trance record will produce something plausible at 128 with the bass
+on the downbeat and nothing can tell it it is wrong.
+
+**Basslines, which is where a genre actually lives.** *offbeat* plays between
+the kicks (trance, house). *rolling* plays three sixteenths after every kick and
+never on it — that rhythm is most of what psytrance is. Also *driving*,
+*sustained*, *octave*, *halftime* and *sixteenth*. Every pattern takes its
+pitches from the chord progression, so the bass follows the harmony by
+construction rather than by coincidence.
+
 **Composition.** Melodies, basslines, chords and pads generated in key, with
 density and variation controls. Hum a line into the microphone and RDX works
 out whether you gave it chord roots or a melody, infers the progression, and

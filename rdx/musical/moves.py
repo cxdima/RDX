@@ -88,8 +88,14 @@ def fade(project: Project, section_id: str, *, start_beat: float = 0.0, beats: f
     ]
 
 
-def drop(project: Project, section_id: str, *, intensity: float = 1.0) -> list[Action]:
-    """The release after a buildup: full kit, everything open and loud."""
+def drop(project: Project, section_id: str, *, intensity: float = 1.0, kit: str = "mainstage", layers: dict | None = None, pickup: bool = True) -> list[Action]:
+    """The release after a buildup: full kit, everything open and loud.
+
+    The kit is a parameter rather than a constant. A drop in one genre is a
+    mainstage pattern and in another it is the same four-floor kick that was
+    already playing, and imposing one on the other is how a record stops
+    sounding like itself.
+    """
     section_of(project, section_id)
     actions: list[Action] = [Action(kind="arrange", section=section_id, params={"operation": "update", "energy": 1.0})]
     for track in editable(project, MELODIC):
@@ -97,7 +103,10 @@ def drop(project: Project, section_id: str, *, intensity: float = 1.0) -> list[A
         actions.append(Action(kind="automation", track=track.id, section=section_id, params={"parameter": "volume_db", "operation": "remove"}))
     drums = editable(project, {"drums"})
     if drums:
-        actions.append(Action(kind="kit", track=drums[0].id, section=section_id, params={"kit": "mainstage", "density": round(min(1.0, 0.75 + 0.25 * intensity), 3), "crash": True}))
+        params = {"kit": kit, "density": round(min(1.0, 0.75 + 0.25 * intensity), 3), "crash": True, "pickup": pickup}
+        if layers:
+            params["layers"] = dict(layers)
+        actions.append(Action(kind="kit", track=drums[0].id, section=section_id, params=params))
     return actions
 
 

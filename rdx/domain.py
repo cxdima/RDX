@@ -269,7 +269,7 @@ class Project(Model):
 
 
 class Action(Model):
-    kind: Literal["project", "compose", "drums", "kit", "transpose", "rhythm", "sound", "character", "harmony", "move", "mix", "arrange", "master", "notes", "add_track", "remove_track", "duplicate_track", "protect", "automation", "sidechain", "mix_fix", "phrase", "relate", "kit_sound"]
+    kind: Literal["project", "compose", "drums", "kit", "transpose", "rhythm", "sound", "character", "harmony", "move", "mix", "arrange", "master", "notes", "add_track", "remove_track", "duplicate_track", "protect", "automation", "sidechain", "mix_fix", "phrase", "relate", "kit_sound", "bassline", "record"]
     track: str | None = None
     section: str | None = None
     params: dict = Field(default_factory=dict)

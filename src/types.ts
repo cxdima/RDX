@@ -151,7 +151,12 @@ export interface Status {
           kind: string;
           plugin: boolean;
           parameter_count: number;
-          parameters: { name: string; min: number; max: number; value: number }[];
+          parameters: {
+            name: string;
+            min: number;
+            max: number;
+            value: number;
+          }[];
         }[];
       }[];
     };

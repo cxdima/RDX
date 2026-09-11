@@ -4,9 +4,11 @@ import random
 import math
 
 from .domain import Action, AUTOMATION_RANGES, Automation, Clip, Kit, Master, MELODIC_PRESETS, Note, PITCH_CLASSES, PRESET_DEFAULTS, SCALE_STEPS, Project, Section, Sidechain, Sound, Track, new_track, uid
+from .musical import bass as bass_module
 from .musical import character as character_module
 from .musical import design as design_module
 from .musical import drums as drums_module
+from .musical import genres as genres_module
 from .musical import harmony as harmony_module
 from .musical import melody as melody_module
 from .musical import mixdown as mixdown_module
@@ -34,8 +36,8 @@ def keys(params: dict, allowed: set[str]):
 
 
 NUMERIC_PARAMS = {"kick_tune", "kick_decay", "kick_click", "snare_tone", "snare_decay", "clap_spread", "hat_tone", "hat_decay", "open_decay", "factor", "decay", "sustain", "filter_env", "filter_decay", "unison", "spread", "sub", "crush", "lfo_depth", "lfo_rate", "tempo", "seed", "density", "variation", "semitones", "start", "end", "grid", "swing", "humanize", "velocity", "cutoff", "resonance", "attack", "release", "reverb", "delay", "drive", "low", "mid", "high", "volume_db", "delta_db", "pan", "bars", "energy", "index", "ceiling", "compression", "audio_offset", "chorus", "flanger", "phaser", "autopan", "motion_rate", "width", "glide", "intensity", "span", "voices", "roll_from_bar", "octave", "cut_bars", "from_cutoff", "to_cutoff", "start_beat", "beats", "to_db", "amount", "degrees"}
-BOOLEAN_PARAMS = {"locked", "last_note", "mute", "solo", "crash", "fill", "roll", "riser", "keep_rhythm", "sweep", "impact", "accelerate"}
-TEXT_PARAMS = {"name", "role", "key", "scale", "pattern", "preset", "operation", "parameter", "note_id", "character", "kit", "from_track", "track", "layer_name", "source", "curve", "trigger", "shape", "problem", "colour", "against", "patch", "wave", "lfo_target", "machine", "progression", "structure"}
+BOOLEAN_PARAMS = {"locked", "last_note", "mute", "solo", "crash", "fill", "roll", "riser", "keep_rhythm", "sweep", "impact", "accelerate", "pickup"}
+TEXT_PARAMS = {"name", "role", "key", "scale", "pattern", "preset", "operation", "parameter", "note_id", "character", "kit", "from_track", "track", "layer_name", "source", "curve", "trigger", "shape", "problem", "colour", "against", "patch", "wave", "lfo_target", "machine", "progression", "structure", "pattern", "genre"}
 
 
 def parameter_types(params: dict):
@@ -243,8 +245,47 @@ def apply_actions(original: Project, actions: list[Action], selection: dict | No
                 findings.extend(f"{f.headline}. {f.detail}" for f in chosen)
             project = apply_actions(project, expanded, selection, None, measured, _depth + 1)
             continue
+        if action.kind == "record":
+            keys(p, {"genre", "bars", "key"})
+            if _depth:
+                raise EditError("A record is the whole arrangement; it cannot be nested inside another edit")
+            genre = p.get("genre")
+            if genre not in genres_module.GENRES:
+                raise Unsupported(f"RDX does not know how to make a '{genre}' record. It knows: {', '.join(genres_module.GENRES)}.")
+            try:
+                setup = genres_module.record(project, genre, bars=p.get("bars"), key=p.get("key"))
+            except ValueError as error:
+                raise EditError(str(error)) from error
+            # A record lays out its own arrangement. Sections that already hold
+            # music are left alone and the record is appended after them; empty
+            # ones are cleared away first, so asking for a record on a fresh
+            # project gives a record rather than a record bolted onto a demo.
+            empty = [s for s in project.sections if not any(c.section_id == s.id and c.notes for tr in project.tracks for c in tr.clips)]
+            clearing: list[Action] = []
+            if empty:
+                # One has to survive until the new sections exist, and it is
+                # renamed so it cannot collide with the names coming in.
+                clearing = [Action(kind="arrange", section=s.id, params={"operation": "remove"}) for s in empty[1:]]
+                clearing.append(Action(kind="arrange", section=empty[0].id, params={"operation": "update", "name": "Replaced"}))
+                project = apply_actions(project, clearing, selection, None, measured, 0)
+            # Two passes: the structure has to exist before its sections can be
+            # filled, and the parts have to exist before a move can shape them.
+            before = {s.name for s in project.sections}
+            project = apply_actions(project, setup, selection, None, measured, 0)
+            if empty:
+                leftover = next((s for s in project.sections if s.name == "Replaced"), None)
+                if leftover and len(project.sections) > 1:
+                    project = apply_actions(project, [Action(kind="arrange", section=leftover.id, params={"operation": "remove"})], selection, None, measured, 0)
+            fresh = [s.name for s in project.sections if s.name not in before]
+            project = apply_actions(project, genres_module.parts_for(project, genre, fresh), selection, None, measured, 0)
+            project = apply_actions(project, genres_module.shape_for(project, genre, fresh), selection, None, measured, 0)
+            if findings is not None:
+                findings.append(f"Built a {genres_module.describe(genre)}")
+                findings.append(f"Sections: {', '.join(fresh)}.")
+                findings.append(f"Bass: {bass_module.describe(genres_module.GENRES[genre].bass)}.")
+            continue
         if action.kind == "move":
-            keys(p, {"name", "intensity", "roll", "riser", "cut_bars", "from_cutoff", "to_cutoff", "track", "preset", "layer_name", "octave", "character", "keep", "start_beat", "beats", "to_db", "shape", "source", "tracks", "amount", "crash", "sweep", "impact", "bars", "factor", "roles", "grid", "accelerate", "structure"})
+            keys(p, {"name", "intensity", "roll", "riser", "cut_bars", "from_cutoff", "to_cutoff", "track", "preset", "layer_name", "octave", "character", "keep", "start_beat", "beats", "to_db", "shape", "source", "tracks", "amount", "crash", "sweep", "impact", "bars", "factor", "roles", "grid", "accelerate", "structure", "kit", "layers", "pickup"})
             if _depth:
                 raise EditError("A production move cannot contain another move")
             name = p.get("name")
@@ -559,7 +600,7 @@ def apply_actions(original: Project, actions: list[Action], selection: dict | No
                             track.clips.append(clip)
                         clip.notes = generate_notes(project, track, section, **p)
                     elif action.kind == "kit":
-                        keys(p, {"kit", "layers", "density", "crash", "fill", "roll", "roll_from_bar", "seed"})
+                        keys(p, {"kit", "layers", "density", "crash", "fill", "roll", "roll_from_bar", "seed", "pickup"})
                         if track.role != "drums":
                             raise EditError(f"{track.name} is not a drum track; drum patterns need one")
                         name = p.get("kit")
@@ -569,7 +610,7 @@ def apply_actions(original: Project, actions: list[Action], selection: dict | No
                         if not isinstance(layers, dict) or any(not isinstance(v, str) for v in layers.values()):
                             raise EditError("Drum layers must be named patterns, for example {\"clap\": \"double\"}")
                         try:
-                            notes = drums_module.build(section.bars, name, layers, density=float(p.get("density", 0.7)), seed=project.seed, crash=bool(p.get("crash", False)), fill=bool(p.get("fill", False)))
+                            notes = drums_module.build(section.bars, name, layers, density=float(p.get("density", 0.7)), seed=project.seed, crash=bool(p.get("crash", False)), fill=bool(p.get("fill", False)), pickup=bool(p.get("pickup", True)))
                         except KeyError as error:
                             raise Unsupported(f"There is no '{error.args[0]}' drum layer. Available: {', '.join(drums_module.LAYERS)}.") from error
                         except ValueError as error:
@@ -644,6 +685,36 @@ def apply_actions(original: Project, actions: list[Action], selection: dict | No
                             clip = Clip(name=track.name, section_id=section.id)
                             track.clips.append(clip)
                         clip.notes = harmony_module.voice(entries, low=low, high=high, voices=voices, velocity=int(p.get("velocity", 72)))
+                    elif action.kind == "bassline":
+                        keys(p, {"pattern", "progression", "from_track", "velocity", "low", "high"})
+                        if track.role in {"drums", "audio"}:
+                            raise EditError("A bassline needs an instrument track")
+                        pattern = p.get("pattern", "offbeat")
+                        if pattern not in bass_module.PATTERNS:
+                            raise Unsupported(f"There is no '{pattern}' bass pattern. RDX knows: {', '.join(bass_module.PATTERNS)}.")
+                        wanted = p.get("progression")
+                        if wanted:
+                            try:
+                                entries = harmony_module.named(wanted, section.bars, project.key, project.scale) if wanted in harmony_module.NAMED_PROGRESSIONS else harmony_module.from_degrees(harmony_module.parse_progression(wanted), section.bars, project.key, project.scale)
+                            except (KeyError, ValueError) as error:
+                                raise EditError(str(error)) from error
+                        else:
+                            # Follow whatever the harmony track is already doing.
+                            source_track = target_tracks(project, p.get("from_track") or "chords", selection)[0]
+                            source = next((c for c in source_track.clips if c.section_id == section.id), None)
+                            if source is None or not source.notes:
+                                raise EditError(f"{source_track.name} has nothing in {section.name} for the bass to follow. Name a progression instead.")
+                            entries = harmony_module.progression(source.notes, section.bars, project.key, project.scale)
+                        try:
+                            written = bass_module.line(pattern, entries, section.bars, low=int(p.get("low", 28)), high=int(p.get("high", 50)), velocity=int(p.get("velocity", 100)))
+                        except (KeyError, ValueError) as error:
+                            raise EditError(str(error)) from error
+                        if not clip:
+                            clip = Clip(name=track.name, section_id=section.id)
+                            track.clips.append(clip)
+                        clip.notes = written
+                        if findings is not None:
+                            findings.append(f"{track.name} in {section.name}: {bass_module.describe(pattern)}.")
                     elif action.kind == "relate":
                         keys(p, {"operation", "from_track", "degrees", "grid", "density", "keep_rhythm", "octave", "against"})
                         if track.role in {"drums", "audio"}:

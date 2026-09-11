@@ -533,6 +533,44 @@ def intents() -> list[Intent]:
         ), lambda scene, rng: ([act("project", {"key": scene.key})], "")),
     ]
 
+    # Whole records, and the bassline rhythms that make a genre.
+    items += [
+        Intent("record_trance", (
+            "make me a trance record",
+            "I want a proper uplifting trance track",
+            "build a trance tune at 138",
+            "give me a full trance arrangement",
+            "start a new trance record",
+        ), lambda scene, rng: ([act("record", {"genre": "trance"})], "")),
+        Intent("record_psytrance", (
+            "make me a psytrance track",
+            "I want psytrance",
+            "build a psy record",
+            "give me that rolling psytrance bass and a full arrangement",
+        ), lambda scene, rng: ([act("record", {"genre": "psytrance"})], "")),
+        Intent("record_other", (
+            "make me a techno track",
+            "build a house record",
+            "I want a hardstyle tune",
+        ), lambda scene, rng: ([act("record", {"genre": rng.choice(["techno", "house", "hardstyle"])})], "")),
+        Intent("bass_offbeat", (
+            "put the bass on the offbeats",
+            "the bass should play between the kicks",
+            "I want a rolling offbeat bassline",
+            "give me that classic trance bass rhythm",
+        ), lambda scene, rng: ([act("bassline", {"pattern": "offbeat"}, track="bass", section="selected")], "")),
+        Intent("bass_rolling", (
+            "give me a psytrance bassline",
+            "I want the bass rolling in sixteenths after each kick",
+            "that triplet psy bass feel",
+        ), lambda scene, rng: ([act("bassline", {"pattern": "rolling"}, track="bass", section="selected")], "")),
+        Intent("bass_simple", (
+            "the bass is too busy",
+            "simplify the bassline",
+            "just hold the bass notes",
+        ), lambda scene, rng: ([act("bassline", {"pattern": rng.choice(["sustained", "halftime"])}, track="bass", section="selected")], "")),
+    ]
+
     # Chords and arrangements asked for by name rather than hummed.
     items += [
         Intent("progression_named", (
