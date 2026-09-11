@@ -22,10 +22,10 @@ arrangement, mixing, revision. Do not silently narrow it to one trick.
 
 | Layer | Responsibility | Files |
 | --- | --- | --- |
-| Studio UI | Arrangement, piano roll, mixer, sound controls, chat, comparison | `src/App.tsx`, `src/PianoRoll.tsx`, `src/studio.css` |
+| Studio UI | Arrangement, piano roll, mixer, sound controls, chat, comparison | `src/App.tsx`, `src/PianoRoll.tsx`, `src/Write.tsx`, `src/studio.css` |
 | Audio engine | Instruments, drum kit, effect chain, transport, WAV render | `src/audio/` (`instruments`, `drums`, `effects`, `engine`) |
 | Musical state | Typed projects, tracks, sections, clips, notes, sound, automation | `rdx/domain.py` |
-| **Musical knowledge** | **Character vocabulary, drum layers, harmony, phrase shape, part relationships, ducking, mix judgement, production moves, truthful descriptions** | **`rdx/musical/`** |
+| **Musical knowledge** | **Character vocabulary, drum layers, harmony, melodic development, phrase shape, part relationships, ducking, mix judgement, production moves, truthful descriptions** | **`rdx/musical/`** |
 | Edit execution | Validated atomic edits, target resolution, protection | `rdx/engine.py` |
 | HTTP service | Proposals, assets, import/export, bridge auth | `rdx/server.py` |
 | Persistence | SQLite projects, snapshots, revisions, feedback, chat | `rdx/store.py` |
@@ -60,6 +60,10 @@ this architecture is designed to make impossible:
 - `rdx/musical/mixdown.py` — band energy, collisions, dynamics and BS.1770
   loudness measured from rendered stems, then the fixes those numbers imply.
   RDX refuses to correct a mix it has not measured.
+- `rdx/musical/motif.py` — melodies composed rather than generated: a rhythmic
+  cell, a shape in scale steps, and a form that states the idea, repeats it,
+  sequences it up, leaves it open, peaks and resolves. Replaced a generator that
+  drew eight random degrees and replayed them every bar.
 - `rdx/musical/melody.py` — phrase shape: space, fill, vary and five contours.
   Pitches move by scale degree, so shaping cannot leave the key.
 - `rdx/musical/parts.py` — one part written against another: follow, counter,
@@ -69,6 +73,28 @@ this architecture is designed to make impossible:
 
 When adding a capability, extend the vocabulary here and add a test that
 asserts the musical result. Do not push it into the prompt and hope.
+
+### Where the musical claims come from
+
+Most of `rdx/musical/` is reasoning that has been written down so it can be
+argued with. Some of it has a source, and where it does, the test says so —
+`a dance-music course` in the repo root is a producer's masterclass
+guide, and these rules are taken from it directly:
+
+- **A crowd cannot dance unless it knows where the beat is**, so something
+  rhythmic keeps running whenever the kick drops out. This is why a breakdown
+  loses its kick and clap but keeps its hats rather than being silenced.
+- **Mastering is compression to bring the loudness up, then a limiter to get as
+  loud as possible without distorting.** The master chain had no makeup stage,
+  so it could only ever turn a record down; every render measured about -34 LUFS.
+- **A drop must not be quieter than the build that leads into it** — he names
+  this as a common and serious fault.
+- **Tease the main melody** before stating it.
+- **Every kick has a top and a bottom**: transients that cut through, and low end
+  that anchors. `Kit` carries both as `kick_click` and `kick_tune`/`kick_decay`.
+
+Cite the source in the test when a claim has one. A rule someone can look up is
+worth more than a rule that was merely plausible when it was written.
 
 ## Commands
 
@@ -80,6 +106,7 @@ npm run build                               # tsc -b && vite build
 npm run check                               # tsc --noEmit
 npm test                                    # pytest
 npm run test:browser                        # playwright
+npm run render                              # whole records to WAV, to listen to
 npm run format                              # prettier
 
 .venv/bin/python scripts/build_training_data.py
@@ -193,7 +220,12 @@ against a copy; the project only changes when the user accepts via
 
 - `tests/` covers engine validation, protection, history, transcription, archive
   round trips, proposals and bridge auth.
-- `tests/browser/` is Playwright against the real built app.
+- `tests/browser/` is Playwright against the real built app. Some of it renders
+  audio and measures it, which is the only way to catch a fault that leaves the
+  project correct and the record silent — see the automation-scope bug in
+  `RDX_HANDOFF.md`. **A musical change is not verified until something has
+  listened to it**; `npm run render` writes whole records to
+  `artifacts/renders/` for exactly that.
 - New musical capability needs an engine test proving the *musical* result, not
   just that the call returned. A drum pattern test should assert the notes land
   where a producer expects them.

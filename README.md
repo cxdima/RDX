@@ -96,6 +96,17 @@ psytrance, techno, house, hardstyle* — each a readable recipe in
 to invent a trance record will produce something plausible at 128 with the bass
 on the downbeat and nothing can tell it it is wrong.
 
+**Melodies that are composed rather than generated.** A melody is a short idea,
+repeated often enough that you remember it and varied often enough that you
+don't get bored. RDX writes one from three decisions: a **cell** (the rhythm of
+the idea — *pluck*, *anthem*, *call*, *drive*, *push*, *roll*, *stab*), a
+**shape** (where it goes, in scale steps), and a **form** (what happens to it
+across eight bars — stated, repeated, sequenced up, left open as a question,
+lifted to a peak, resolved home). Notes on the strongest beats are pulled onto
+tones of the chord underneath, so the line sits inside the harmony instead of
+arguing with it, and a breakdown gets long singable notes rather than the drop's
+line played quieter. See [`motif.py`](rdx/musical/motif.py).
+
 **Basslines, which is where a genre actually lives.** *offbeat* plays between
 the kicks (trance, house). *rolling* plays three sixteenths after every kick and
 never on it — that rhythm is most of what psytrance is. Also *driving*,
@@ -202,6 +213,19 @@ track duplication, naming and protection; a mixer with real meters; master
 compression and limiting; automation for filter, resonance, level, pan, reverb,
 flanger and chorus.
 
+**Fills where a record needs them.** Every section that leads somewhere bigger
+ends on a drum fill; builds are left alone because they already end on an
+accelerating roll, and two of those at once is a mess. Adding a crash, a fill or
+a roll adds it to the pattern that is already playing rather than regenerating
+the drums — a distinction that matters, because the version that regenerated
+turned a mainstage drop into a plain four-to-the-floor beat and reported success.
+
+**Reachable without the model.** The generators are controls in the studio, not
+only sentences to the model: rhythm cell, melodic shape, eight-bar form, chord
+anchor, bassline pattern, progression, drum kit, crash/fill/roll. The vocabulary
+the browser offers is compared against Python by a test, so a control can never
+name a shape the engine has never heard of.
+
 **Everything around it.** Undo/redo, SQLite persistence, project archives, audio
 import, MIDI import and export, stereo WAV rendering, and a packaged Max for
 Live bridge.
@@ -234,16 +258,29 @@ it in the same call).
 ## The model
 
 The base is [`mlx-community/Qwen3-4B-Instruct-2507-4bit`](https://huggingface.co/mlx-community/Qwen3-4B-Instruct-2507-4bit),
-pinned to a fixed revision. **The trained adapter ships with the repository** —
-`data/models/rdx-v2/` is committed, 14 MB, alongside the instruction data and
-every evaluation that measured it. Cloning is enough; no training run has to be
-repeated.
+pinned to a fixed revision.
 
-Adapter v2 was trained locally in 39 minutes and scores **14/22** against the
-base model's **9/22** on a held-out benchmark, with unusable output collapsing
-from 10 cases to 1. It is **not activated by default**: it does not clear the
-0.7 gate in `rdx/promote.py`, and that gate was left where it was rather than
-moved to fit the result.
+**Adapter v3 is the active one.** It scores **25/32** against the base model's
+**11/32** on a held-out benchmark, improving or holding every category
+and regressing none — including 7/7 on the worked example in
+[RDX_PLAN.md](RDX_PLAN.md). It is approved in `data/models/rdx-v3/approved.json`
+alongside the measurement that justified it.
+
+**It does not ship with the repository.** At 176 MB it is too large to commit
+comfortably, so a fresh clone runs the base model until you train your own:
+
+```sh
+RDX_ADAPTER=data/models/rdx-v3 .venv/bin/python -m rdx.training \
+    --iters 2400 --batch-size 2 --layers 16 --rank 48 \
+    --learning-rate 6e-5 --warmup 80 --max-seq-length 2560
+RDX_ADAPTER=data/models/rdx-v3 .venv/bin/python -m rdx.evaluate --adapter
+RDX_ADAPTER=data/models/rdx-v3 .venv/bin/python -m rdx.promote
+```
+
+About four hours on a 24 GB M-series Mac, peaking at 11.8 GB. What *is*
+committed is `data/models/rdx-v2/` — 14 MB, an earlier and weaker adapter kept
+for comparison, along with the instruction data and every evaluation that
+measured either of them.
 
 The dataset is generated from intents and split **by phrasing family** — no way
 of asking for something appears in more than one split — so the validation
