@@ -298,11 +298,66 @@ def stutter(project: Project, section_id: str, *, beats: float = 2.0, grid: floa
     return actions
 
 
-MOVES = {"buildup": buildup, "drop": drop, "breakdown": breakdown, "fade": fade, "layer": layer, "pump": pump, "transition": transition, "riser": riser, "double_time": double_time, "stutter": stutter}
+# Whole-track shapes, as (section name, bars, energy). The energies matter as
+# much as the lengths: they are what every generator reads to decide how full a
+# part should be, so a breakdown written at 0.25 comes out sparse on its own.
+STRUCTURES: dict[str, tuple[str, tuple[tuple[str, int, float], ...]]] = {
+    "club": (
+        "the long DJ shape: two drops with a real breakdown between them",
+        (("Intro", 16, 0.3), ("Build", 8, 0.6), ("Drop", 16, 1.0), ("Breakdown", 16, 0.25),
+         ("Build 2", 8, 0.7), ("Drop 2", 16, 1.0), ("Outro", 16, 0.3)),
+    ),
+    "short": (
+        "one build and one drop, for working an idea out before committing",
+        (("Intro", 8, 0.35), ("Build", 8, 0.65), ("Drop", 16, 1.0), ("Outro", 8, 0.3)),
+    ),
+    "radio": (
+        "front-loaded, with the first drop arriving early",
+        (("Intro", 8, 0.35), ("Verse", 16, 0.55), ("Build", 8, 0.7), ("Drop", 16, 1.0),
+         ("Breakdown", 8, 0.3), ("Build 2", 8, 0.75), ("Drop 2", 16, 1.0), ("Outro", 8, 0.3)),
+    ),
+    "anthem": (
+        "a long breakdown and one enormous drop, the mainstage shape",
+        (("Intro", 16, 0.3), ("Breakdown", 16, 0.25), ("Build", 16, 0.8), ("Drop", 32, 1.0), ("Outro", 16, 0.3)),
+    ),
+}
+
+
+def structure(project: Project, *, structure: str = "club", bars: int | None = None) -> list[Action]:
+    """Lay out a whole arrangement as named sections with the right energies.
+
+    Sections are appended rather than replacing what is there. A move that
+    silently deleted an arrangement would be the most destructive thing in the
+    vocabulary, and "start again" is a thing to ask for explicitly.
+    """
+    if structure not in STRUCTURES:
+        raise ValueError(f"There is no '{structure}' structure. RDX knows: {', '.join(STRUCTURES)}.")
+    plan = STRUCTURES[structure][1]
+    scale = (bars / 16) if bars else 1.0
+    existing = {s.name.lower() for s in project.sections}
+    total = sum(s.bars for s in project.sections)
+    actions: list[Action] = []
+    for section_name, length, energy in plan:
+        length = max(1, min(64, round(length * scale)))
+        if total + length > 256:
+            raise ValueError(f"That structure does not fit: the arrangement would pass 256 bars at {section_name}.")
+        label = section_name
+        suffix = 2
+        while label.lower() in existing:
+            label, suffix = f"{section_name} {suffix}", suffix + 1
+        existing.add(label.lower())
+        total += length
+        actions.append(Action(kind="arrange", params={"operation": "add", "name": label, "bars": length, "energy": energy}))
+    if len(project.sections) + len(actions) > 16:
+        raise ValueError("That structure would take the arrangement past 16 sections. Remove some first.")
+    return actions
+
+
+MOVES = {"buildup": buildup, "drop": drop, "breakdown": breakdown, "fade": fade, "layer": layer, "pump": pump, "transition": transition, "riser": riser, "double_time": double_time, "stutter": stutter, "structure": structure}
 
 # Moves that change how tracks behave everywhere rather than inside one
 # section, so the engine must not hand them a section to work in.
-WHOLE_TRACK_MOVES = {"pump"}
+WHOLE_TRACK_MOVES = {"pump", "structure"}
 
 DESCRIPTIONS = {
     "buildup": "opens the filters across the section, swells the level, rolls the snare and sweeps a riser in",
@@ -315,4 +370,5 @@ DESCRIPTIONS = {
     "riser": "sweeps a noise riser up into the end of the section on its own track",
     "double_time": "plays the same parts at half or double speed without changing the tempo",
     "stutter": "retriggers whatever is playing at the end of the section, getting faster into the next one",
+    "structure": "lays out a whole arrangement as named sections with the energies each one needs",
 }

@@ -485,6 +485,38 @@ def intents() -> list[Intent]:
         ), refuse("I have not measured this mix yet. Analyse it in the mixer and I will tell you what is actually in it.")),
     ]
 
+    # Chords and arrangements asked for by name rather than hummed.
+    items += [
+        Intent("progression_named", (
+            "give me a chord progression",
+            "I need chords for this section",
+            "write a progression in this key",
+            "put a trance progression on the chords",
+            "the classic uplifting chord progression please",
+        ), lambda scene, rng: ([act("harmony", {"progression": rng.choice(["trance", "epic", "lift"])}, track="chords", section="selected")], "")),
+        Intent("progression_numerals", (
+            "use i-VI-III-VII for the chords",
+            "give me a 1 6 3 7 progression",
+            "the chords should go i VII VI VII",
+        ), lambda scene, rng: ([act("harmony", {"progression": rng.choice(["i-VI-III-VII", "i-VII-VI-VII"])}, track="chords", section="selected")], "")),
+        Intent("progression_sad", (
+            "I want sadder chords",
+            "give me a melancholy progression",
+            "the chords should feel heavier",
+        ), lambda scene, rng: ([act("harmony", {"progression": "melancholy"}, track="chords", section="selected")], "")),
+        Intent("structure_full", (
+            "lay out a full track structure",
+            "give me a whole arrangement",
+            "build the structure of a complete track",
+            "I want the full club arrangement",
+        ), lambda scene, rng: ([act("move", {"name": "structure", "structure": "club"})], "")),
+        Intent("structure_short", (
+            "just give me a short arrangement",
+            "a quick structure to work an idea out",
+            "one build and one drop is enough",
+        ), lambda scene, rng: ([act("move", {"name": "structure", "structure": "short"})], "")),
+    ]
+
     # Drum sound design: what the kit sounds like, not what it plays.
     items += [
         Intent("drums_909", (

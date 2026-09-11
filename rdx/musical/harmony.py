@@ -357,3 +357,68 @@ def describe(entries: list[tuple[float, float, Chord]]) -> str:
     symbols = " - ".join(c.symbol for c in shown)
     numerals = " - ".join(c.numeral for c in shown)
     return f"{symbols} ({numerals})" + ("..." if len(unique) > len(shown) else "")
+
+
+# --- progressions asked for rather than hummed ------------------------------
+
+# The progressions this music is actually built on, as scale degrees. Written
+# as numbers rather than symbols so they transpose to any key for free, and
+# named so a producer can ask for one without humming it first.
+NAMED_PROGRESSIONS: dict[str, tuple[str, tuple[int, ...]]] = {
+    "trance": ("the one almost every uplifting track sits on", (0, 5, 2, 6)),
+    "andalusian": ("the descending four that sounds inevitable", (0, 6, 5, 4)),
+    "epic": ("rocks between the tonic and the two above it", (0, 6, 5, 6)),
+    "pop": ("the four chords, starting away from home", (5, 3, 0, 4)),
+    "melancholy": ("falls to the fourth and climbs back", (0, 3, 6, 2)),
+    "driving": ("stays close to the tonic and pushes", (0, 6, 0, 4)),
+    "suspense": ("never resolves, which is what makes it work under a build", (0, 4, 5, 4)),
+    "lift": ("steps upward the whole way", (5, 6, 0, 2)),
+    "classic": ("the oldest cadence there is", (0, 3, 4, 0)),
+}
+
+NUMERALS = {"i": 0, "ii": 1, "iii": 2, "iv": 3, "v": 4, "vi": 5, "vii": 6}
+
+
+def parse_progression(text: str) -> list[int]:
+    """Read "i-VI-III-VII" or "1 6 3 7" as scale degrees.
+
+    Case is ignored: the key already decides whether the third degree is major
+    or minor, and a numeral that disagrees with the key would be a borrowed
+    chord rather than a typo, which is a separate request.
+    """
+    parts = [p.strip() for p in text.replace("|", "-").replace(",", "-").replace(" ", "-").split("-") if p.strip()]
+    if not 1 < len(parts) <= 16:
+        raise ValueError("A progression is between two and sixteen chords")
+    degrees = []
+    for part in parts:
+        if part.isdigit() and 1 <= int(part) <= 7:
+            degrees.append(int(part) - 1)
+        elif part.lower() in NUMERALS:
+            degrees.append(NUMERALS[part.lower()])
+        else:
+            raise ValueError(f"'{part}' is not a chord degree. Use I to VII, or 1 to 7.")
+    return degrees
+
+
+def from_degrees(degrees: list[int], bars: int, key: str, scale: str, span: float = 4.0) -> list[tuple[float, float, Chord]]:
+    """Lay a progression out across a section, repeating it to fill the space."""
+    if not degrees:
+        raise ValueError("There are no chords in that progression")
+    chords = diatonic(key, scale)
+    by_degree = {chord.degree: chord for chord in chords if chord.quality in TRIADS}
+    total = bars * 4
+    entries: list[tuple[float, float, Chord]] = []
+    start = 0.0
+    index = 0
+    while start < total - 1e-9:
+        chord = by_degree[degrees[index % len(degrees)] % 7]
+        entries.append((round(start, 4), min(span, total - start), chord))
+        start += span
+        index += 1
+    return entries
+
+
+def named(name: str, bars: int, key: str, scale: str, span: float = 4.0) -> list[tuple[float, float, Chord]]:
+    if name not in NAMED_PROGRESSIONS:
+        raise KeyError(name)
+    return from_degrees(list(NAMED_PROGRESSIONS[name][1]), bars, key, scale, span)

@@ -37,7 +37,7 @@ def keys(params: dict, allowed: set[str]):
 
 NUMERIC_PARAMS = {"kick_tune", "kick_decay", "kick_click", "snare_tone", "snare_decay", "clap_spread", "hat_tone", "hat_decay", "open_decay", "factor", "decay", "sustain", "filter_env", "filter_decay", "unison", "spread", "sub", "crush", "lfo_depth", "lfo_rate", "tempo", "seed", "density", "variation", "semitones", "start", "end", "grid", "swing", "humanize", "velocity", "cutoff", "resonance", "attack", "release", "reverb", "delay", "drive", "low", "mid", "high", "volume_db", "delta_db", "pan", "bars", "energy", "index", "ceiling", "compression", "audio_offset", "chorus", "flanger", "phaser", "autopan", "motion_rate", "width", "glide", "intensity", "span", "voices", "roll_from_bar", "octave", "cut_bars", "from_cutoff", "to_cutoff", "start_beat", "beats", "to_db", "amount", "degrees"}
 BOOLEAN_PARAMS = {"locked", "last_note", "mute", "solo", "crash", "fill", "roll", "riser", "keep_rhythm", "sweep", "impact", "accelerate"}
-TEXT_PARAMS = {"name", "role", "key", "scale", "pattern", "preset", "operation", "parameter", "note_id", "character", "kit", "from_track", "track", "layer_name", "source", "curve", "trigger", "shape", "problem", "colour", "against", "patch", "wave", "lfo_target", "machine"}
+TEXT_PARAMS = {"name", "role", "key", "scale", "pattern", "preset", "operation", "parameter", "note_id", "character", "kit", "from_track", "track", "layer_name", "source", "curve", "trigger", "shape", "problem", "colour", "against", "patch", "wave", "lfo_target", "machine", "progression", "structure"}
 
 
 def parameter_types(params: dict):
@@ -243,7 +243,7 @@ def apply_actions(original: Project, actions: list[Action], selection: dict | No
             project = apply_actions(project, expanded, selection, None, measured, _depth + 1)
             continue
         if action.kind == "move":
-            keys(p, {"name", "intensity", "roll", "riser", "cut_bars", "from_cutoff", "to_cutoff", "track", "preset", "layer_name", "octave", "character", "keep", "start_beat", "beats", "to_db", "shape", "source", "tracks", "amount", "crash", "sweep", "impact", "bars", "factor", "roles", "grid", "accelerate"})
+            keys(p, {"name", "intensity", "roll", "riser", "cut_bars", "from_cutoff", "to_cutoff", "track", "preset", "layer_name", "octave", "character", "keep", "start_beat", "beats", "to_db", "shape", "source", "tracks", "amount", "crash", "sweep", "impact", "bars", "factor", "roles", "grid", "accelerate", "structure"})
             if _depth:
                 raise EditError("A production move cannot contain another move")
             name = p.get("name")
@@ -543,20 +543,35 @@ def apply_actions(original: Project, actions: list[Action], selection: dict | No
                             track.clips.append(clip)
                         clip.notes = sorted(notes, key=lambda n: (n.start, n.pitch))
                     elif action.kind == "harmony":
-                        keys(p, {"from_track", "span", "voices", "low", "high", "velocity", "colour"})
+                        keys(p, {"from_track", "span", "voices", "low", "high", "velocity", "colour", "progression"})
                         if track.role in {"drums", "audio"}:
                             raise EditError("Chords need an instrument track")
-                        source_track = target_tracks(project, p.get("from_track") or track.id, selection)[0]
-                        source = next((c for c in source_track.clips if c.section_id == section.id), None)
-                        if source is None or not source.notes:
-                            raise EditError(f"{source_track.name} has nothing recorded in {section.name} to build chords from")
+                        wanted = p.get("progression")
+                        source_track = source = None
+                        if wanted is None:
+                            source_track = target_tracks(project, p.get("from_track") or track.id, selection)[0]
+                            source = next((c for c in source_track.clips if c.section_id == section.id), None)
+                            if source is None or not source.notes:
+                                raise EditError(f"{source_track.name} has nothing recorded in {section.name} to build chords from. Name a progression instead, for example \"i-VI-III-VII\" or one of: {', '.join(sorted(harmony_module.NAMED_PROGRESSIONS))}.")
                         span = float(p.get("span", 4))
                         if span not in {1, 2, 4, 8, 16}:
                             raise EditError("A chord can last 1, 2, 4, 8 or 16 beats")
                         voices = int(p.get("voices", 3))
                         if not 2 <= voices <= 5:
                             raise EditError("Chords use between two and five voices")
-                        entries = harmony_module.progression(source.notes, section.bars, project.key, project.scale, span)
+                        if wanted is not None:
+                            try:
+                                if wanted in harmony_module.NAMED_PROGRESSIONS:
+                                    entries = harmony_module.named(wanted, section.bars, project.key, project.scale, span)
+                                    heard = f"the {wanted} progression"
+                                else:
+                                    entries = harmony_module.from_degrees(harmony_module.parse_progression(wanted), section.bars, project.key, project.scale, span)
+                                    heard = "the progression you named"
+                            except ValueError as error:
+                                raise EditError(str(error)) from error
+                        else:
+                            entries = harmony_module.progression(source.notes, section.bars, project.key, project.scale, span)
+                            heard = ("chord roots" if harmony_module.looks_like_roots(source.notes, section.bars) else "a melody") + f" on {source_track.name}"
                         colour = p.get("colour")
                         if colour is not None:
                             if colour not in harmony_module.COLOURS:
@@ -569,8 +584,7 @@ def apply_actions(original: Project, actions: list[Action], selection: dict | No
                             if "voices" not in p:
                                 voices = min(5, max(len(c.intervals) for _, _, c in entries))
                         if findings is not None:
-                            heard = "chord roots" if harmony_module.looks_like_roots(source.notes, section.bars) else "a melody"
-                            findings.append(f"Heard {heard} on {source_track.name} and built {harmony_module.describe(entries)} in {section.name}.")
+                            findings.append(f"Took {heard} and built {harmony_module.describe(entries)} in {section.name}.")
                         low = int(p.get("low", 48))
                         high = int(p.get("high", 72))
                         if not 0 <= low < high <= 127:

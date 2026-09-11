@@ -1019,3 +1019,93 @@ def test_the_studio_starts_from_the_same_drum_voices_as_python():
     literal = re.sub(r"(\w+):", r'"\1":', block.group(1))
     mirrored = json.loads(re.sub(r",(\s*[}\]])", r"\1", literal))
     assert mirrored == {name: getattr(Kit(), name) for name in Kit.model_fields}
+
+
+# --- progressions asked for rather than hummed ------------------------------
+
+
+def test_a_named_progression_is_the_one_it_says_it_is():
+    assert harmony.describe(harmony.named("trance", 4, "A", "minor")) == "Am - F - C - G (i - VI - III - VII)"
+    assert harmony.describe(harmony.named("andalusian", 4, "A", "minor")) == "Am - G - F - E (i - VII - VI - V)"
+
+
+def test_a_progression_transposes_with_the_key():
+    in_a = [c.numeral for _, _, c in harmony.named("trance", 4, "A", "minor")]
+    in_f = [c.numeral for _, _, c in harmony.named("trance", 4, "F", "minor")]
+    assert in_a == in_f, "the degrees are the progression; the key only moves it"
+    assert {c.root_pc for _, _, c in harmony.named("trance", 4, "A", "minor")} != {c.root_pc for _, _, c in harmony.named("trance", 4, "F", "minor")}
+
+
+def test_roman_numerals_and_plain_numbers_both_read():
+    assert harmony.parse_progression("i-VI-III-VII") == [0, 5, 2, 6]
+    assert harmony.parse_progression("1 6 3 7") == [0, 5, 2, 6]
+    assert harmony.parse_progression("I, IV, V, I") == [0, 3, 4, 0]
+
+
+def test_a_nonsense_progression_is_refused_with_what_is_allowed():
+    with pytest.raises(ValueError, match="I to VII"):
+        harmony.parse_progression("i-IX-III")
+    with pytest.raises(ValueError, match="two and sixteen"):
+        harmony.parse_progression("i")
+
+
+def test_a_progression_repeats_to_fill_the_section():
+    entries = harmony.from_degrees([0, 5], 4, "A", "minor", span=4)
+    assert len(entries) == 4, "two chords over four bars is the pair played twice"
+    assert entries[0][2].degree == entries[2][2].degree
+
+
+def test_chords_can_be_asked_for_without_humming_anything(project, selection):
+    findings: list[str] = []
+    after = apply_actions(project, [Action(kind="harmony", track="chords", section="Main", params={"progression": "trance"})], selection, findings)
+    main = next(s for s in after.sections if s.name == "Main")
+    clip = next(c for c in next(t for t in after.tracks if t.role == "chords").clips if c.section_id == main.id)
+    assert clip.notes and "Am - F - C - G" in findings[0]
+
+
+def test_an_empty_track_with_no_progression_named_says_what_to_do_instead(project, selection):
+    with pytest.raises(EditError, match="Name a progression instead"):
+        apply_actions(project, [Action(kind="harmony", track="lead", section="Intro", params={})], selection)
+
+
+# --- whole-track structures ------------------------------------------------
+
+
+def test_every_structure_lays_out_a_playable_arrangement(project, selection):
+    for name in moves.STRUCTURES:
+        after = apply_actions(project, [Action(kind="move", params={"name": "structure", "structure": name})], selection)
+        added = after.sections[len(project.sections):]
+        assert len(added) == len(moves.STRUCTURES[name][1])
+        assert all(1 <= s.bars <= 64 and 0 <= s.energy <= 1 for s in added)
+
+
+def test_a_structure_never_deletes_what_is_already_there(project, selection):
+    after = apply_actions(project, [Action(kind="move", params={"name": "structure", "structure": "club"})], selection)
+    assert [s.name for s in after.sections][: len(project.sections)] == [s.name for s in project.sections]
+    for track in after.tracks:
+        before = next(t for t in project.tracks if t.id == track.id)
+        assert all(any(c.section_id == old.section_id for c in track.clips) for old in before.clips)
+
+
+def test_a_drop_is_written_at_full_energy_and_a_breakdown_is_not(project, selection):
+    after = apply_actions(project, [Action(kind="move", params={"name": "structure", "structure": "club"})], selection)
+    by_name = {s.name: s for s in after.sections}
+    assert by_name["Drop"].energy == 1.0
+    assert by_name["Breakdown"].energy < 0.4
+
+
+def test_section_names_never_collide_with_the_ones_already_there(project, selection):
+    after = apply_actions(project, [Action(kind="move", params={"name": "structure", "structure": "club"})], selection)
+    names = [s.name for s in after.sections]
+    assert len(names) == len(set(names))
+
+
+def test_an_unknown_structure_is_refused_by_name(project, selection):
+    with pytest.raises(EditError, match="club"):
+        apply_actions(project, [Action(kind="move", params={"name": "structure", "structure": "jungle"})], selection)
+
+
+def test_a_structure_that_would_not_fit_is_refused_rather_than_truncated(project, selection):
+    long = apply_actions(project, [Action(kind="move", params={"name": "structure", "structure": "anthem"})], selection)
+    with pytest.raises(EditError):
+        apply_actions(long, [Action(kind="move", params={"name": "structure", "structure": "anthem", "bars": 64})], selection)
