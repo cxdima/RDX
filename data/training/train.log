@@ -37,3 +37,19 @@ Iter 100: Train loss 0.330, Learning Rate 5.970e-05, It/sec 0.074, Tokens/sec 8.
 Iter 100: Saved adapter weights to /Users/dmoiseenko/Development/RDX/data/models/rdx-v3/adapters.safetensors and /Users/dmoiseenko/Development/RDX/data/models/rdx-v3/0000100_adapters.safetensors.
 Iter 120: Train loss 0.296, Learning Rate 5.930e-05, It/sec 0.074, Tokens/sec 8.582, Trained Tokens 13862, Peak mem 16.600 GB
 Iter 140: Train loss 0.244, Learning Rate 5.874e-05, It/sec 0.074, Tokens/sec 8.352, Trained Tokens 16129, Peak mem 16.600 GB
+Iter 160: Train loss 0.228, Learning Rate 5.803e-05, It/sec 0.074, Tokens/sec 8.650, Trained Tokens 18454, Peak mem 16.600 GB
+Iter 180: Train loss 0.300, Learning Rate 5.715e-05, It/sec 0.074, Tokens/sec 8.520, Trained Tokens 20743, Peak mem 16.600 GB
+
+Calculating loss...:   0%|          | 0/8 [00:00<?, ?it/s]
+Calculating loss...:  12%|█▎        | 1/8 [00:03<00:25,  3.59s/it]
+Calculating loss...:  25%|██▌       | 2/8 [00:06<00:20,  3.48s/it]
+Calculating loss...:  38%|███▊      | 3/8 [00:10<00:17,  3.46s/it]
+Calculating loss...:  50%|█████     | 4/8 [00:13<00:13,  3.46s/it]
+Calculating loss...:  62%|██████▎   | 5/8 [00:17<00:10,  3.43s/it]
+Calculating loss...:  75%|███████▌  | 6/8 [00:20<00:06,  3.44s/it]
+Calculating loss...:  88%|████████▊ | 7/8 [00:24<00:03,  3.44s/it]
+Calculating loss...: 100%|██████████| 8/8 [00:27<00:00,  3.45s/it]
+Calculating loss...: 100%|██████████| 8/8 [00:27<00:00,  3.45s/it]
+Iter 200: Val loss 0.232, Val took 27.633s
+Iter 200: Train loss 0.249, Learning Rate 5.613e-05, It/sec 0.075, Tokens/sec 8.524, Trained Tokens 23031, Peak mem 16.600 GB
+Iter 200: Saved adapter weights to /Users/dmoiseenko/Development/RDX/data/models/rdx-v3/adapters.safetensors and /Users/dmoiseenko/Development/RDX/data/models/rdx-v3/0000200_adapters.safetensors.

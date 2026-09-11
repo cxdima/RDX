@@ -123,7 +123,13 @@ RDX_ADAPTER=data/models/rdx-v2 .venv/bin/python -m rdx.promote
    `scripts/bridge_selftest.py` proves the studio's half independently, so a
    failure can be narrowed to one side. Automation still does not cross into
    Live — the Clip API can clear an envelope and not write one — so RDX's
-   curves are baked into the stems, and saying otherwise would be a lie. Live is **12.4.5** — `Track.insert_device` exists
+   curves are baked into the stems, and saying otherwise would be a lie.
+
+   Editing `bridge/live.js` needs the device reloaded in Live before the change
+   takes effect. `autowatch` only seems to fire while Max's own window is open;
+   with Live in the background it does not, even with Live frontmost. Drag the
+   device out and back in. `tests/test_bridge_js.py` runs that file in Node
+   against a stubbed Live API, so most of it can be checked without Ableton. Live is **12.4.5** — `Track.insert_device` exists
    (12.3+, native devices only) but writing automation envelopes still does not.
    Recheck the LOM reference before relying on any Live API, and never assume a
    function exists because it would be convenient.

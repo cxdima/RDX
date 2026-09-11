@@ -13,6 +13,44 @@ function ids(value) {
     return result;
 }
 function number(object, property) { return Number(object.get(property)[0]); }
+function text(object, property) {
+    // Max hands back a list, and a name containing spaces may arrive split
+    // across several symbols. Joining covers both without losing the spaces.
+    var value = object.get(property);
+    return (value && value.join ? value.join(' ') : String(value)).trim();
+}
+
+// Reading every device on every track is far heavier than reading the tempo,
+// so it happens on its own slower cycle and the answer is cached between.
+var scanned = null;
+var pollsSinceScan = 99;
+
+function devices() {
+    var song = api('live_set');
+    var trackIds = ids(song.get('tracks'));
+    var summary = [];
+    for (var i = 0; i < trackIds.length; i++) {
+        var track = api('id ' + trackIds[i]);
+        var deviceIds = ids(track.get('devices'));
+        var listed = [];
+        for (var d = 0; d < deviceIds.length; d++) {
+            var device = api('id ' + deviceIds[d]);
+            listed.push({
+                name: text(device, 'name'),
+                // PluginDevice means a VST or AU: RDX can drive its parameters
+                // but can never insert it, which is the whole template-Set idea.
+                plugin: text(device, 'class_name') === 'PluginDevice',
+                kind: text(device, 'class_display_name')
+            });
+        }
+        summary.push({
+            name: text(track, 'name'),
+            midi: !!number(track, 'has_midi_input'),
+            devices: listed
+        });
+    }
+    return summary;
+}
 function read(filename) {
     var file = new File(filename, 'read');
     if (!file.isopen) throw new Error('Transfer file is missing');
@@ -73,7 +111,11 @@ function state() {
         var slots = ids(track.get('clip_slots'));
         for (var s = 0; s < slots.length; s++) if (number(api('id ' + slots[s]), 'has_clip')) content = true;
     }
-    return {tempo:number(song, 'tempo'), has_content:content, arrangement_end:end, track_count:tracks.length, playing:!!number(song, 'is_playing'), busy:busy};
+    if (++pollsSinceScan >= 8) {
+        try { scanned = devices(); } catch (error) { scanned = null; }
+        pollsSinceScan = 0;
+    }
+    return {tempo:number(song, 'tempo'), has_content:content, arrangement_end:end, track_count:tracks.length, playing:!!number(song, 'is_playing'), busy:busy, tracks:scanned};
 }
 function snapshot() {
     try {outlet(0, 'state', JSON.stringify(state()));}
