@@ -14,7 +14,18 @@ FIELDS = {
     "cutoff": ("filter", "Hz", 0),
     "resonance": ("resonance", "", 1),
     "attack": ("attack", "s", 3),
+    "decay": ("decay", "s", 3),
+    "sustain": ("sustain", "", 2),
     "release": ("release", "s", 2),
+    "filter_env": ("filter envelope", "", 2),
+    "filter_decay": ("filter decay", "s", 2),
+    "unison": ("voices", "", 0),
+    "spread": ("detune", "cents", 0),
+    "sub": ("sub oscillator", "", 2),
+    "octave": ("octave", "", 0),
+    "crush": ("bit crush", "", 2),
+    "lfo_depth": ("LFO depth", "", 2),
+    "lfo_rate": ("LFO rate", "Hz", 2),
     "reverb": ("reverb", "", 2),
     "delay": ("echo", "", 2),
     "drive": ("drive", "", 2),
@@ -73,6 +84,10 @@ def track_changes(before: Track, after: Track, names: dict[str, str], tracks: di
         parts.append(f"renamed to {after.name}")
     if before.sound.preset != after.sound.preset:
         parts.append(f"sound {before.sound.preset} to {after.sound.preset}")
+    if before.sound.wave != after.sound.wave:
+        parts.append(f"wave {before.sound.wave} to {after.sound.wave}")
+    if before.sound.lfo_target != after.sound.lfo_target:
+        parts.append(f"LFO off" if after.sound.lfo_target == "off" else f"LFO on the {after.sound.lfo_target}")
     for field, (label, unit, digits) in FIELDS.items():
         old, new = getattr(before.sound, field), getattr(after.sound, field)
         if abs(old - new) > 1e-6:

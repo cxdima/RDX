@@ -13,9 +13,9 @@ from pathlib import Path
 
 import pytest
 
-from rdx.domain import Action, Clip, DRUM_MAP, Note, Sound
+from rdx.domain import Action, Clip, DRUM_MAP, LFO_TARGETS, Note, Sound, WAVES
 from rdx.engine import EditError, Unsupported, apply_actions, starter_project
-from rdx.musical import drums, harmony, melody, moves, parts, sidechain
+from rdx.musical import design, drums, harmony, melody, moves, parts, sidechain
 from rdx.musical.character import CHARACTERS, character_changes
 from rdx.musical.describe import describe
 
@@ -55,13 +55,17 @@ def test_intensity_scales_the_change_proportionally():
     assert 8000 > gentle > strong
 
 
-def test_character_never_leaves_the_allowed_range():
-    extreme = Sound(preset="saw", cutoff=20000, high=12, low=12, reverb=1, width=1)
+@pytest.mark.parametrize("intensity", [0.15, 0.37, 0.6, 1.0])
+def test_character_never_produces_a_sound_the_model_refuses(intensity):
+    """Every word, at every strength, from an extreme starting point."""
+    extreme = Sound(preset="saw", cutoff=20000, high=12, low=12, reverb=1, width=1, unison=7, sustain=1)
     for word in CHARACTERS:
-        for value in character_changes(extreme, word, 1.0).values():
-            assert isinstance(value, float)
-        updated = Sound.model_validate({**extreme.model_dump(), **character_changes(extreme, word, 1.0)})
-        assert updated.cutoff <= 20000
+        changes = character_changes(extreme, word, intensity)
+        for name, value in changes.items():
+            field = Sound.model_fields[name]
+            assert isinstance(value, str if field.annotation not in (float, int) else (int, float)), f"{word}.{name}"
+        updated = Sound.model_validate({**extreme.model_dump(), **changes})
+        assert updated.cutoff <= 20000 and 1 <= updated.unison <= 7
 
 
 def test_unknown_character_is_refused_not_guessed():
@@ -862,3 +866,104 @@ def test_a_stutter_repeats_one_slice_rather_than_inventing_notes(project, select
     now = next(c for c in next(t for t in after.tracks if t.role == "lead").clips if c.section_id == main.id)
     repeated = {n.pitch for n in now.notes if n.start >= main.bars * 4 - 2}
     assert repeated <= {n.pitch for n in before.notes}, "every note in the stutter was already in the part"
+
+
+# --- sound design ----------------------------------------------------------
+
+
+def test_every_patch_is_a_sound_the_engine_can_actually_make(project, selection):
+    for name, patch in design.PATCHES.items():
+        role = patch.roles[0]
+        track_name = f"Test {name}"
+        added = apply_actions(project, [Action(kind="add_track", params={"role": role, "name": track_name})], selection)
+        after = apply_actions(added, [Action(kind="sound", track=track_name, params={"patch": name})], selection)
+        sound = next(t for t in after.tracks if t.name == track_name).sound
+        for field, value in patch.settings.items():
+            assert getattr(sound, field) == value, f"{name}.{field}"
+
+
+def test_a_patch_replaces_the_whole_sound_rather_than_blending_into_it(project, selection):
+    dirty = apply_actions(project, [Action(kind="sound", track="lead", params={"flanger": 0.9, "phaser": 0.8, "reverb": 0.9})], selection)
+    clean = apply_actions(dirty, [Action(kind="sound", track="lead", params={"patch": "pluck_stab"})], selection)
+    sound = next(t for t in clean.tracks if t.role == "lead").sound
+    assert sound.flanger == 0 and sound.phaser == 0, "a named sound is a whole sound, not a layer on the last one"
+
+
+def test_settings_named_beside_a_patch_still_win(project, selection):
+    after = apply_actions(project, [Action(kind="sound", track="lead", params={"patch": "pluck_stab", "reverb": 0.8})], selection)
+    assert next(t for t in after.tracks if t.role == "lead").sound.reverb == 0.8
+
+
+def test_a_patch_on_the_wrong_kind_of_track_is_refused_with_the_reason(project, selection):
+    with pytest.raises(EditError, match="belongs on"):
+        apply_actions(project, [Action(kind="sound", track="bass", params={"patch": "glass_pad"})], selection)
+
+
+def test_a_patch_that_does_not_exist_is_refused_by_name(project, selection):
+    with pytest.raises(Unsupported, match="reese"):
+        apply_actions(project, [Action(kind="sound", track="lead", params={"patch": "moog"})], selection)
+
+
+def test_a_preset_carries_its_own_envelope(project):
+    """A pluck is a pluck because of how it decays, not because of its wave."""
+    lead = next(t for t in project.tracks if t.role == "lead")
+    assert lead.sound.preset == "pluck"
+    assert lead.sound.sustain < 0.2 and lead.sound.decay < 0.25
+
+
+def test_changing_the_preset_brings_its_envelope_with_it(project, selection):
+    after = apply_actions(project, [Action(kind="sound", track="lead", params={"preset": "pad"})], selection)
+    sound = next(t for t in after.tracks if t.role == "lead").sound
+    assert sound.sustain > 0.5 and sound.attack > 0.2, "a pad does not keep a pluck's envelope"
+
+
+def test_plucky_and_sustained_are_opposites_of_each_other():
+    sound = Sound(preset="saw", decay=0.5, sustain=0.6)
+    assert character_changes(sound, "plucky")["sustain"] < 0.6
+    assert character_changes(sound, "sustained")["sustain"] > 0.6
+
+
+def test_acidic_opens_the_filter_envelope_and_closes_the_filter():
+    changes = character_changes(Sound(preset="saw", cutoff=8000), "acidic", 1.0)
+    assert changes["filter_env"] > 0.5, "the envelope is what makes it acid"
+    assert changes["cutoff"] < 8000 and changes["resonance"] > 1
+
+
+def test_wobbling_points_the_lfo_at_the_filter_and_still_takes_it_off_again():
+    on = character_changes(Sound(preset="saw"), "wobbling", 1.0)
+    assert on["lfo_target"] == "cutoff" and on["lfo_depth"] > 0.5
+    wobbling = Sound.model_validate({**Sound(preset="saw").model_dump(), **on})
+    off = character_changes(wobbling, "still", 1.0)
+    assert off["lfo_target"] == "off" and off["lfo_depth"] == 0
+
+
+def test_stacked_stays_on_a_whole_number_of_voices():
+    for intensity in (0.2, 0.45, 0.66, 0.9):
+        changes = character_changes(Sound(preset="saw", unison=1), "stacked", intensity)
+        assert isinstance(changes["unison"], int), "there is no such thing as 4.6 voices"
+
+
+def test_the_patch_is_reported_in_the_producer_s_own_words(project, selection):
+    findings: list[str] = []
+    apply_actions(project, [Action(kind="sound", track="bass", params={"patch": "reese"})], selection, findings)
+    assert "reese" in findings[0] and "detuned" in findings[0]
+
+
+def test_the_patch_list_in_the_studio_matches_the_one_in_python():
+    """A sound offered in the picker that RDX does not have is a refusal."""
+    source = (ROOT / "src/App.tsx").read_text()
+    block = re.search(r"const PATCHES = \[(.*?)\n\];", source, re.S)
+    assert block, "src/App.tsx must list the patches it offers"
+    listed = {
+        name: set(re.findall(r'"(\w+)"', roles))
+        for name, roles in re.findall(r'\{\s*name:\s*"(\w+)",\s*roles:\s*\[([^\]]*)\]', block.group(1))
+    }
+    assert listed == {name: set(patch.roles) for name, patch in design.PATCHES.items()}
+
+
+def test_the_waveforms_and_lfo_targets_match_the_model():
+    source = (ROOT / "src/App.tsx").read_text()
+    for constant, expected in (("WAVES", WAVES), ("LFO_TARGETS", LFO_TARGETS)):
+        block = re.search(rf"const {constant} = \[(.*?)\];", source, re.S)
+        assert block, constant
+        assert tuple(re.findall(r'"([\w]+)"', block.group(1))) == expected

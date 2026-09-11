@@ -24,10 +24,20 @@ export interface Sound {
   cutoff: number;
   resonance: number;
   attack: number;
+  decay: number;
+  sustain: number;
   release: number;
+  filter_env: number;
+  filter_decay: number;
+  wave: string;
+  unison: number;
+  spread: number;
+  sub: number;
+  octave: number;
   reverb: number;
   delay: number;
   drive: number;
+  crush: number;
   low: number;
   mid: number;
   high: number;
@@ -38,6 +48,9 @@ export interface Sound {
   motion_rate: number;
   width: number;
   glide: number;
+  lfo_target: string;
+  lfo_depth: number;
+  lfo_rate: number;
 }
 export interface Automation {
   parameter:

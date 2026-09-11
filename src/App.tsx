@@ -73,6 +73,28 @@ const MELODIC_PRESETS = [
   "fm",
   "noise",
 ] as const;
+/** Named sounds, mirroring PATCHES in rdx/musical/design.py. */
+const PATCHES = [
+  { name: "reese", roles: ["bass"] },
+  { name: "acid", roles: ["bass", "lead"] },
+  { name: "supersaw_lead", roles: ["lead", "chords"] },
+  { name: "hoover", roles: ["lead"] },
+  { name: "pluck_stab", roles: ["lead", "chords"] },
+  { name: "sub_bass", roles: ["bass"] },
+  { name: "donk", roles: ["lead", "bass"] },
+  { name: "wobble", roles: ["bass"] },
+  { name: "warm_pad", roles: ["pad", "chords"] },
+  { name: "glass_pad", roles: ["pad", "chords"] },
+  { name: "bell_lead", roles: ["lead"] },
+  { name: "organ", roles: ["chords", "pad"] },
+  { name: "gritty_bass", roles: ["bass"] },
+  { name: "vibrato_lead", roles: ["lead"] },
+  { name: "tremolo_keys", roles: ["chords", "pad"] },
+  { name: "riser_noise", roles: ["pad", "lead"] },
+];
+const WAVES = ["preset", "saw", "square", "triangle", "sine", "pulse"];
+const LFO_TARGETS = ["off", "cutoff", "pitch", "volume"];
+
 const PRESET_LABELS: Record<string, string> = {
   supersaw: "SUPERSAW",
   saw: "SAW",
@@ -1334,6 +1356,75 @@ export default function App() {
                 )}
               </select>
             </div>
+            <div className="sound-patches">
+              <label className="parameter">
+                <span>sound</span>
+                <select
+                  aria-label="Patch"
+                  value=""
+                  disabled={locked || ["drums", "audio"].includes(track.role)}
+                  onChange={(e) =>
+                    e.target.value &&
+                    void action(
+                      "sound",
+                      { patch: e.target.value },
+                      `${track.name}: ${e.target.value.replace("_", " ")}`,
+                    )
+                  }
+                >
+                  <option value="">choose a sound...</option>
+                  {PATCHES.filter((p) => p.roles.includes(track.role)).map(
+                    (p) => (
+                      <option key={p.name} value={p.name}>
+                        {p.name.replace("_", " ")}
+                      </option>
+                    ),
+                  )}
+                </select>
+              </label>
+              <label className="parameter">
+                <span>wave</span>
+                <select
+                  aria-label="Waveform"
+                  value={track.sound.wave}
+                  disabled={locked || ["drums", "audio"].includes(track.role)}
+                  onChange={(e) =>
+                    void action(
+                      "sound",
+                      { wave: e.target.value },
+                      `${track.name} waveform`,
+                    )
+                  }
+                >
+                  {WAVES.map((w) => (
+                    <option key={w} value={w}>
+                      {w}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="parameter">
+                <span>LFO to</span>
+                <select
+                  aria-label="LFO destination"
+                  value={track.sound.lfo_target}
+                  disabled={locked || ["drums", "audio"].includes(track.role)}
+                  onChange={(e) =>
+                    void action(
+                      "sound",
+                      { lfo_target: e.target.value },
+                      `${track.name} LFO`,
+                    )
+                  }
+                >
+                  {LFO_TARGETS.map((target) => (
+                    <option key={target} value={target}>
+                      {target}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
             <div className="sound-controls">
               {[
                 {
@@ -1348,7 +1439,26 @@ export default function App() {
                   name: "Envelope",
                   controls: [
                     ["attack", "Attack", 0.001, 4, 0.001, " s"],
+                    ["decay", "Decay", 0.005, 4, 0.005, " s"],
+                    ["sustain", "Sustain", 0, 1, 0.01, ""],
                     ["release", "Release", 0.01, 8, 0.01, " s"],
+                  ],
+                },
+                {
+                  name: "Oscillator",
+                  controls: [
+                    ["unison", "Voices", 1, 7, 1, ""],
+                    ["spread", "Detune", 0, 100, 1, " c"],
+                    ["sub", "Sub", 0, 1, 0.01, ""],
+                    ["octave", "Octave", -2, 2, 1, ""],
+                    ["crush", "Bit crush", 0, 1, 0.01, ""],
+                  ],
+                },
+                {
+                  name: "Filter envelope",
+                  controls: [
+                    ["filter_env", "Amount", -1, 1, 0.01, ""],
+                    ["filter_decay", "Decay", 0.01, 4, 0.01, " s"],
                   ],
                 },
                 {
@@ -1376,6 +1486,13 @@ export default function App() {
                     ["motion_rate", "Rate", 0.02, 8, 0.01, " Hz"],
                     ["width", "Width", 0, 1, 0.01, ""],
                     ["glide", "Glide", 0, 0.5, 0.005, " s"],
+                  ],
+                },
+                {
+                  name: "LFO",
+                  controls: [
+                    ["lfo_depth", "Depth", 0, 1, 0.01, ""],
+                    ["lfo_rate", "Rate", 0.05, 20, 0.05, " Hz"],
                   ],
                 },
               ].map((group) => (

@@ -5,8 +5,9 @@ import math
 
 from music21 import pitch, scale
 
-from .domain import Action, Automation, Clip, Master, MELODIC_PRESETS, Note, Project, Section, Sidechain, Sound, Track, new_track, uid
+from .domain import Action, Automation, Clip, Master, MELODIC_PRESETS, Note, PRESET_DEFAULTS, Project, Section, Sidechain, Sound, Track, new_track, uid
 from .musical import character as character_module
+from .musical import design as design_module
 from .musical import drums as drums_module
 from .musical import harmony as harmony_module
 from .musical import melody as melody_module
@@ -34,9 +35,9 @@ def keys(params: dict, allowed: set[str]):
         raise EditError(f"Unsupported settings: {', '.join(sorted(unknown))}")
 
 
-NUMERIC_PARAMS = {"factor", "tempo", "seed", "density", "variation", "semitones", "start", "end", "grid", "swing", "humanize", "velocity", "cutoff", "resonance", "attack", "release", "reverb", "delay", "drive", "low", "mid", "high", "volume_db", "delta_db", "pan", "bars", "energy", "index", "ceiling", "compression", "audio_offset", "chorus", "flanger", "phaser", "autopan", "motion_rate", "width", "glide", "intensity", "span", "voices", "roll_from_bar", "octave", "cut_bars", "from_cutoff", "to_cutoff", "start_beat", "beats", "to_db", "amount", "degrees"}
+NUMERIC_PARAMS = {"factor", "decay", "sustain", "filter_env", "filter_decay", "unison", "spread", "sub", "crush", "lfo_depth", "lfo_rate", "tempo", "seed", "density", "variation", "semitones", "start", "end", "grid", "swing", "humanize", "velocity", "cutoff", "resonance", "attack", "release", "reverb", "delay", "drive", "low", "mid", "high", "volume_db", "delta_db", "pan", "bars", "energy", "index", "ceiling", "compression", "audio_offset", "chorus", "flanger", "phaser", "autopan", "motion_rate", "width", "glide", "intensity", "span", "voices", "roll_from_bar", "octave", "cut_bars", "from_cutoff", "to_cutoff", "start_beat", "beats", "to_db", "amount", "degrees"}
 BOOLEAN_PARAMS = {"locked", "last_note", "mute", "solo", "crash", "fill", "roll", "riser", "keep_rhythm", "sweep", "impact", "accelerate"}
-TEXT_PARAMS = {"name", "role", "key", "scale", "pattern", "preset", "operation", "parameter", "note_id", "character", "kit", "from_track", "track", "layer_name", "source", "curve", "trigger", "shape", "problem", "colour", "against"}
+TEXT_PARAMS = {"name", "role", "key", "scale", "pattern", "preset", "operation", "parameter", "note_id", "character", "kit", "from_track", "track", "layer_name", "source", "curve", "trigger", "shape", "problem", "colour", "against", "patch", "wave", "lfo_target"}
 
 
 def parameter_types(params: dict):
@@ -66,22 +67,6 @@ def validated(project: Project) -> Project:
                 raise EditError("That edit would leave the project inconsistent: " + "; ".join(unique[:3])) from error
         raise EditError("That edit would leave the project inconsistent") from error
 
-
-# Musical starting points for each instrument, applied when the preset changes.
-# Explicit parameters in the same action still win over these.
-PRESET_DEFAULTS: dict[str, dict[str, float]] = {
-    "pluck": {"attack": 0.005, "release": 0.18, "cutoff": 6000},
-    "saw": {"attack": 0.01, "release": 0.4, "cutoff": 9000},
-    "supersaw": {"attack": 0.02, "release": 0.5, "cutoff": 11000, "chorus": 0.25, "width": 0.5},
-    "sine": {"attack": 0.01, "release": 0.35, "cutoff": 12000},
-    "sub": {"attack": 0.005, "release": 0.25, "cutoff": 400, "reverb": 0, "delay": 0, "width": 0},
-    "pad": {"attack": 0.4, "release": 1.8, "cutoff": 4500},
-    "strings": {"attack": 0.35, "release": 1.6, "cutoff": 5200, "chorus": 0.3, "width": 0.35, "reverb": 0.3},
-    "choir": {"attack": 0.5, "release": 2.2, "cutoff": 3800, "reverb": 0.4, "width": 0.4},
-    "bell": {"attack": 0.002, "release": 1.4, "cutoff": 14000},
-    "fm": {"attack": 0.008, "release": 0.5, "cutoff": 10000},
-    "noise": {"attack": 0.5, "release": 1.0, "cutoff": 2000, "reverb": 0.3},
-}
 
 # Kinds that name their own target, so the model never has to echo an id back.
 ROLE_IMPLIED_BY_KIND = {"drums": "drums", "kit": "drums"}
@@ -419,14 +404,32 @@ def apply_actions(original: Project, actions: list[Action], selection: dict | No
                         note.id = uid()
                 project.tracks.append(new)
             elif action.kind == "sound":
-                keys(p, set(Sound.model_fields))
+                keys(p, set(Sound.model_fields) | {"patch"})
+                patch: dict = {}
+                if "patch" in p:
+                    name = p["patch"]
+                    if name not in design_module.PATCHES:
+                        raise Unsupported(f"There is no '{name}' sound. RDX knows: {', '.join(sorted(design_module.PATCHES))}.")
+                    if track.role in {"drums", "audio"}:
+                        raise EditError(f"{track.name} is a {track.role} track; patches are for instrument parts")
+                    if not design_module.suits(name, track.role):
+                        where = " or ".join(design_module.PATCHES[name].roles)
+                        raise EditError(f"A {name.replace('_', ' ')} belongs on {where}, and {track.name} is the {track.role}. Put it on a {where} track or say which sound you want there instead.")
+                    patch = design_module.patch_settings(name)
+                    if findings is not None:
+                        findings.append(f"{track.name}: {design_module.describe_patch(name)}.")
+                p = {k: v for k, v in p.items() if k != "patch"}
                 if "preset" in p:
                     if p["preset"] not in MELODIC_PRESETS:
                         raise Unsupported(f"There is no '{p['preset']}' instrument. Available: {', '.join(MELODIC_PRESETS)}.")
                     if track.role in {"drums", "audio"}:
                         raise EditError(f"{track.name} is a {track.role} track and does not take an instrument preset")
                 try:
-                    track.sound = Sound.model_validate({**track.sound.model_dump(), **PRESET_DEFAULTS.get(p.get("preset"), {}), **p})
+                    # A patch is a whole sound, so it replaces rather than
+                    # blends; anything named alongside it still wins.
+                    base = Sound().model_dump() if patch else track.sound.model_dump()
+                    preset_start = PRESET_DEFAULTS.get(patch.get("preset") or p.get("preset"), {})
+                    track.sound = Sound.model_validate({**base, **preset_start, **patch, **p})
                 except ValueError as error:
                     raise EditError(f"Those sound settings are out of range: {', '.join(sorted(set(p) - {'preset'}))}") from error
             elif action.kind == "character":

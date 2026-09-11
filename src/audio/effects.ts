@@ -61,6 +61,39 @@ export function createChain(
       ),
     );
 
+  // Bit reduction: 16 bits is transparent, 2 is destroyed, and the control
+  // runs the other way round so that "more crush" means more of it.
+  if (used("crush")) {
+    const crusher = keep(
+      new Tone.BitCrusher(Math.max(1, Math.round(16 - sound.crush * 14))),
+    );
+    crusher.wet.value = Math.min(1, 0.35 + sound.crush * 0.65);
+    stages.push(crusher);
+  }
+
+  // The dedicated LFO, with one named destination. Pitch and volume are done
+  // with Tone's own vibrato and tremolo because they are the same thing done
+  // properly; cutoff is wired straight to the filter this chain already has.
+  if (sound.lfo_target === "pitch" && sound.lfo_depth > 0)
+    stages.push(
+      keep(
+        new Tone.Vibrato({
+          frequency: sound.lfo_rate,
+          depth: sound.lfo_depth * 0.3,
+        }),
+      ),
+    );
+  if (sound.lfo_target === "volume" && sound.lfo_depth > 0)
+    stages.push(
+      keep(
+        new Tone.Tremolo({
+          frequency: sound.lfo_rate,
+          depth: sound.lfo_depth,
+          spread: 0,
+        }).start(),
+      ),
+    );
+
   let chorusParam: Automatable | undefined;
   if (used("chorus")) {
     const chorus = keep(
@@ -143,6 +176,24 @@ export function createChain(
     const reverb = keep(new Tone.Reverb({ decay: 1.6, wet: sound.reverb }));
     reverbParam = reverb.wet;
     stages.push(reverb);
+  }
+
+  // Sweeping the filter itself, around the cutoff rather than from zero, so a
+  // deep wobble still passes the body of the sound.
+  if (
+    sound.lfo_target === "cutoff" &&
+    sound.lfo_depth > 0 &&
+    !animated.has("cutoff")
+  ) {
+    const span = sound.cutoff * 0.9 * sound.lfo_depth;
+    const sweep = keep(
+      new Tone.LFO({
+        frequency: sound.lfo_rate,
+        min: Math.max(60, sound.cutoff - span),
+        max: Math.min(20000, sound.cutoff + span * 0.6),
+      }).start(),
+    );
+    sweep.connect(filter.frequency);
   }
 
   filter.chain(...stages, destination);

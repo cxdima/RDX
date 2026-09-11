@@ -5,6 +5,11 @@ import type { Sound } from "../types";
  * Instrument voices. Each preset is a deliberate starting character rather
  * than an oscillator name — "strings" is a detuned ensemble with vibrato,
  * "supersaw" is the wide stacked lead trance is built on.
+ *
+ * The synth controls themselves live in the Sound model: a full ADSR, a filter
+ * envelope, unison and spread, a sub oscillator and an octave. A preset now
+ * chooses where those start (see PRESET_DEFAULTS in rdx/domain.py) rather than
+ * hard-coding them here, so "shorten the decay" is a real request on any sound.
  */
 export type Voice = {
   triggerNote(
@@ -18,11 +23,49 @@ export type Voice = {
 
 type Destination = Tone.InputNode;
 
-const FAT = (
-  type: "fatsawtooth" | "fatsine" | "fatsquare",
-  count: number,
-  spread: number,
-) => ({ type, count, spread }) as Tone.OmniOscillatorOptions;
+/** The oscillator for a preset, widened into unison when the sound asks. */
+function oscillator(sound: Sound): Tone.OmniOscillatorOptions {
+  const shapes: Record<string, string> = {
+    saw: "sawtooth",
+    square: "square",
+    triangle: "triangle",
+    sine: "sine",
+    pulse: "pulse",
+  };
+  const byPreset: Record<string, string> = {
+    supersaw: "sawtooth",
+    saw: "sawtooth",
+    strings: "sawtooth",
+    pad: "sawtooth",
+    choir: "sine",
+    sub: "sine",
+    sine: "sine",
+    pluck: "triangle",
+  };
+  // An unknown wave falls back to the preset's own rather than taking the
+  // whole audio engine down with it.
+  const base = shapes[sound.wave] ?? byPreset[sound.preset] ?? "sawtooth";
+  if (sound.unison > 1 && base !== "pulse")
+    return {
+      type: `fat${base}`,
+      count: sound.unison,
+      spread: sound.spread,
+    } as unknown as Tone.OmniOscillatorOptions;
+  return { type: base } as unknown as Tone.OmniOscillatorOptions;
+}
+
+const PRESET_VOLUME: Record<string, number> = {
+  supersaw: -12,
+  strings: -13,
+  choir: -9,
+  pad: -13,
+  sub: -4,
+  bell: -12,
+  fm: -11,
+  sine: -8,
+  pluck: -8,
+  saw: -10,
+};
 
 export function createVoice(sound: Sound, destination: Destination): Voice {
   const nodes: { dispose(): unknown }[] = [];
@@ -32,22 +75,18 @@ export function createVoice(sound: Sound, destination: Destination): Voice {
   };
   const envelope = {
     attack: sound.attack,
-    decay: sound.preset === "pluck" ? 0.18 : 0.3,
-    sustain: sound.preset === "pluck" ? 0.12 : 0.6,
+    decay: sound.decay,
+    sustain: sound.sustain,
     release: sound.release,
   };
+  const shift = 2 ** sound.octave;
 
   // A riser or sweep: noise shaped by the track's filter and automation.
   if (sound.preset === "noise") {
     const synth = keep(
       new Tone.NoiseSynth({
         noise: { type: "pink" },
-        envelope: {
-          attack: sound.attack,
-          decay: 0.1,
-          sustain: 1,
-          release: sound.release,
-        },
+        envelope,
         volume: -6,
       }).connect(destination),
     );
@@ -70,85 +109,76 @@ export function createVoice(sound: Sound, destination: Destination): Voice {
     );
   }
 
+  // A sub oscillator is its own voice an octave down, mixed in underneath.
+  let subVoice: Tone.PolySynth | undefined;
+  if (sound.sub > 0) {
+    const gain = keep(new Tone.Gain(sound.sub).connect(target));
+    subVoice = keep(
+      new Tone.PolySynth(Tone.Synth, {
+        oscillator: { type: "sine" } as Tone.OmniOscillatorOptions,
+        envelope,
+        volume: -6,
+      }).connect(gain),
+    );
+    subVoice.maxPolyphony = 16;
+  }
+
   let synth: Tone.PolySynth;
-  switch (sound.preset) {
-    case "supersaw":
-      synth = new Tone.PolySynth(Tone.Synth, {
-        oscillator: FAT("fatsawtooth", 7, 40),
-        envelope,
-        volume: -12,
-      });
-      break;
-    case "strings":
-      synth = new Tone.PolySynth(Tone.Synth, {
-        oscillator: FAT("fatsawtooth", 4, 22),
-        envelope: { ...envelope, sustain: 0.85 },
-        volume: -13,
-      });
-      break;
-    case "choir":
-      synth = new Tone.PolySynth(Tone.Synth, {
-        oscillator: FAT("fatsine", 5, 45),
-        envelope: { ...envelope, sustain: 0.9 },
-        volume: -9,
-      });
-      break;
-    case "pad":
-      synth = new Tone.PolySynth(Tone.Synth, {
-        oscillator: FAT("fatsawtooth", 3, 30),
-        envelope: { ...envelope, sustain: 0.8 },
-        volume: -13,
-      });
-      break;
-    case "sub":
-      synth = new Tone.PolySynth(Tone.Synth, {
-        oscillator: { type: "sine" } as Tone.OmniOscillatorOptions,
-        envelope: { ...envelope, sustain: 0.9 },
-        volume: -4,
-      });
-      break;
-    case "bell":
-      synth = new Tone.PolySynth(Tone.FMSynth, {
-        harmonicity: 3.01,
-        modulationIndex: 14,
-        envelope: { ...envelope, sustain: 0 },
-        modulationEnvelope: {
-          attack: 0.001,
-          decay: 0.35,
-          sustain: 0,
-          release: 0.2,
-        },
-        volume: -12,
-      });
-      break;
-    case "fm":
-      synth = new Tone.PolySynth(Tone.FMSynth, {
-        harmonicity: 2,
-        modulationIndex: 8,
-        envelope,
-        volume: -11,
-      });
-      break;
-    case "sine":
-      synth = new Tone.PolySynth(Tone.Synth, {
-        oscillator: { type: "sine" } as Tone.OmniOscillatorOptions,
-        envelope,
-        volume: -8,
-      });
-      break;
-    case "pluck":
-      synth = new Tone.PolySynth(Tone.Synth, {
-        oscillator: { type: "triangle" } as Tone.OmniOscillatorOptions,
-        envelope,
-        volume: -8,
-      });
-      break;
-    default:
-      synth = new Tone.PolySynth(Tone.Synth, {
-        oscillator: { type: "sawtooth" } as Tone.OmniOscillatorOptions,
-        envelope,
-        volume: -10,
-      });
+  if (sound.filter_env !== 0) {
+    // A filter envelope has to be per voice, so the note that opened the
+    // filter is the note that closes it. MonoSynth is Tone's voice that has
+    // one; PolySynth makes it polyphonic.
+    const octaves = Math.max(-4, Math.min(4, sound.filter_env * 4));
+    synth = new Tone.PolySynth(Tone.MonoSynth, {
+      oscillator: oscillator(sound),
+      envelope,
+      filter: {
+        type: "lowpass",
+        Q: Math.min(15, sound.resonance),
+        rolloff: -24,
+      },
+      filterEnvelope: {
+        attack: 0.002,
+        decay: sound.filter_decay,
+        sustain: 0,
+        release: sound.filter_decay,
+        baseFrequency: Math.max(60, sound.cutoff * 0.35),
+        octaves,
+        exponent: 2,
+      },
+      volume: (PRESET_VOLUME[sound.preset] ?? -10) - 2,
+    });
+  } else {
+    switch (sound.preset) {
+      case "bell":
+        synth = new Tone.PolySynth(Tone.FMSynth, {
+          harmonicity: 3.01,
+          modulationIndex: 14,
+          envelope,
+          modulationEnvelope: {
+            attack: 0.001,
+            decay: 0.35,
+            sustain: 0,
+            release: 0.2,
+          },
+          volume: PRESET_VOLUME.bell,
+        });
+        break;
+      case "fm":
+        synth = new Tone.PolySynth(Tone.FMSynth, {
+          harmonicity: 2,
+          modulationIndex: 8,
+          envelope,
+          volume: PRESET_VOLUME.fm,
+        });
+        break;
+      default:
+        synth = new Tone.PolySynth(Tone.Synth, {
+          oscillator: oscillator(sound),
+          envelope,
+          volume: PRESET_VOLUME[sound.preset] ?? -10,
+        });
+    }
   }
   synth.maxPolyphony = 32;
   if (sound.glide > 0) synth.set({ portamento: sound.glide });
@@ -156,7 +186,14 @@ export function createVoice(sound: Sound, destination: Destination): Voice {
 
   return {
     nodes,
-    triggerNote: (frequency, duration, time, velocity) =>
-      synth.triggerAttackRelease(frequency, duration, time, velocity),
+    triggerNote: (frequency, duration, time, velocity) => {
+      synth.triggerAttackRelease(frequency * shift, duration, time, velocity);
+      subVoice?.triggerAttackRelease(
+        frequency * shift * 0.5,
+        duration,
+        time,
+        velocity,
+      );
+    },
   };
 }

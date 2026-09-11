@@ -50,15 +50,35 @@ DRUM_MAP = {36: "Kick", 37: "Rim", 38: "Snare", 39: "Clap", 42: "Hat", 44: "Peda
 AUTOMATION_RANGES = {"cutoff": (60, 20000), "resonance": (0.1, 15), "volume_db": (-60, 6), "pan": (-1, 1), "reverb": (0, 1), "flanger": (0, 1), "chorus": (0, 1)}
 
 
+WAVES = ("preset", "saw", "square", "triangle", "sine", "pulse")
+LFO_TARGETS = ("off", "cutoff", "pitch", "volume")
+
+
 class Sound(Model):
     preset: Literal[PRESETS] = "pluck"  # type: ignore[valid-type]
     cutoff: float = Field(default=6000, ge=60, le=20000)
     resonance: float = Field(default=1, ge=0.1, le=15)
+    # The amplitude envelope, all four stages. Attack and release alone cannot
+    # tell a pluck from a pad: what separates them is how fast the note falls
+    # back and how much of it is left holding.
     attack: float = Field(default=0.01, ge=0.001, le=4)
+    decay: float = Field(default=0.3, ge=0.005, le=4)
+    sustain: float = Field(default=0.6, ge=0, le=1)
     release: float = Field(default=0.3, ge=0.01, le=8)
+    # The filter envelope: how far the filter opens on each note and how long
+    # it takes to close. This is the control that makes an acid line acid.
+    filter_env: float = Field(default=0, ge=-1, le=1)
+    filter_decay: float = Field(default=0.3, ge=0.01, le=4)
+    # The oscillator itself.
+    wave: Literal[WAVES] = "preset"  # type: ignore[valid-type]
+    unison: int = Field(default=1, ge=1, le=7)
+    spread: float = Field(default=0, ge=0, le=100)  # cents between unison voices
+    sub: float = Field(default=0, ge=0, le=1)  # a sine an octave below
+    octave: int = Field(default=0, ge=-2, le=2)
     reverb: float = Field(default=0.15, ge=0, le=1)
     delay: float = Field(default=0.05, ge=0, le=0.8)
     drive: float = Field(default=0, ge=0, le=0.8)
+    crush: float = Field(default=0, ge=0, le=1)  # bit reduction, 0 is off
     low: float = Field(default=0, ge=-24, le=12)
     mid: float = Field(default=0, ge=-24, le=12)
     high: float = Field(default=0, ge=-24, le=12)
@@ -70,6 +90,32 @@ class Sound(Model):
     motion_rate: float = Field(default=0.4, ge=0.02, le=8)
     width: float = Field(default=0, ge=0, le=1)
     glide: float = Field(default=0, ge=0, le=0.5)
+    # A dedicated LFO with a named destination, separate from the motion
+    # section's shared rate: wobble, vibrato and tremolo are one control each.
+    lfo_target: Literal[LFO_TARGETS] = "off"  # type: ignore[valid-type]
+    lfo_depth: float = Field(default=0, ge=0, le=1)
+    lfo_rate: float = Field(default=4, ge=0.05, le=20)
+
+
+# Musical starting points for each instrument, applied when a track is created
+# and when the preset changes. Explicit parameters in the same action still win.
+#
+# These are what makes a preset a starting character rather than a waveform
+# name: a pluck is a pluck because it decays to almost nothing in a fifth of a
+# second, not because of its oscillator.
+PRESET_DEFAULTS: dict[str, dict[str, float | int | str]] = {
+    "pluck": {"attack": 0.005, "decay": 0.18, "sustain": 0.12, "release": 0.18, "cutoff": 6000},
+    "saw": {"attack": 0.01, "decay": 0.3, "sustain": 0.6, "release": 0.4, "cutoff": 9000},
+    "supersaw": {"attack": 0.02, "decay": 0.3, "sustain": 0.6, "release": 0.5, "cutoff": 11000, "chorus": 0.25, "width": 0.5, "unison": 7, "spread": 40},
+    "sine": {"attack": 0.01, "decay": 0.3, "sustain": 0.6, "release": 0.35, "cutoff": 12000},
+    "sub": {"attack": 0.005, "decay": 0.3, "sustain": 0.9, "release": 0.25, "cutoff": 400, "reverb": 0, "delay": 0, "width": 0},
+    "pad": {"attack": 0.4, "decay": 0.3, "sustain": 0.8, "release": 1.8, "cutoff": 4500, "unison": 3, "spread": 30},
+    "strings": {"attack": 0.35, "decay": 0.3, "sustain": 0.85, "release": 1.6, "cutoff": 5200, "chorus": 0.3, "width": 0.35, "reverb": 0.3, "unison": 4, "spread": 22},
+    "choir": {"attack": 0.5, "decay": 0.3, "sustain": 0.9, "release": 2.2, "cutoff": 3800, "reverb": 0.4, "width": 0.4, "unison": 5, "spread": 45},
+    "bell": {"attack": 0.002, "decay": 0.3, "sustain": 0.0, "release": 1.4, "cutoff": 14000},
+    "fm": {"attack": 0.008, "decay": 0.3, "sustain": 0.6, "release": 0.5, "cutoff": 10000},
+    "noise": {"attack": 0.5, "decay": 0.1, "sustain": 1.0, "release": 1.0, "cutoff": 2000, "reverb": 0.3},
+}
 
 
 class Sidechain(Model):
@@ -205,7 +251,8 @@ COLORS = {"drums": "#ed987b", "bass": "#bde66c", "chords": "#ac9ae8", "lead": "#
 
 def new_track(role: str, name: str | None = None) -> Track:
     presets = {"drums": "drumkit", "bass": "sine", "chords": "pad", "lead": "pluck", "pad": "pad", "audio": "audio"}
-    sound = Sound(preset=presets[role])
+    preset = presets[role]
+    sound = Sound.model_validate({"preset": preset, **PRESET_DEFAULTS.get(preset, {})})
     if role in ("pad", "chords"):
         sound.attack, sound.release, sound.reverb = 0.3, 1.5, 0.25
     if role == "bass":

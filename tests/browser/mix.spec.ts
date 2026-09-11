@@ -50,7 +50,8 @@ test("the studio renders the mix, measures it, and reports what it found", async
   await expect(page.getByText("Not measured yet.")).toBeVisible();
 
   await page.getByRole("button", { name: "Analyse the mix" }).click();
-  await expect(page.getByText("LUFS")).toBeVisible({ timeout: 150_000 });
+  // Scoped to the numbers panel: findings quote LUFS in their wording too.
+  await expect(page.locator(".mix-numbers")).toBeVisible({ timeout: 150_000 });
 
   // Every band adds up to the whole spectrum, and the reading is real numbers.
   const shares = await page

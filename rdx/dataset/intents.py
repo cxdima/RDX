@@ -101,6 +101,12 @@ EXTRA: dict[str, tuple[str, ...]] = {
     "punchy": ("the {track} needs more punch", "make the {track} hit harder", "give the {track} some attack"),
     "moving": ("give the {track} some movement", "the {track} is static, make it move"),
     "tight": ("tighten the {track} up", "the {track} is washing out, pull it in"),
+    "plucky": ("make the {track} pluck instead of hold", "shorten the notes on the {track}", "the {track} should stab rather than sustain"),
+    "sustained": ("let the {track} hold out", "the notes on the {track} die too quickly", "make the {track} hold through the whole note"),
+    "snappy": ("give the {track} a snap on each note", "the {track} has no front edge to it"),
+    "stacked": ("thicken the {track} up with more voices", "the {track} sounds like one thin synth"),
+    "deep": ("put something under the {track}", "the {track} needs an octave below it"),
+    "crushed": ("dirty the {track} up", "I want the {track} to sound broken and lo-fi"),
 }
 
 
@@ -183,7 +189,7 @@ def refuse(note: str) -> Build:
     return build
 
 
-CHARACTER_WORDS = ("warm", "bright", "dark", "soft", "hard", "punchy", "fat", "thin", "wide", "narrow", "dry", "wet", "dreamy", "lush", "gritty", "clean", "sharp", "smooth", "huge", "tight", "airy", "clear", "moving", "swirling", "metallic", "goosebumps")
+CHARACTER_WORDS = ("warm", "bright", "dark", "soft", "hard", "punchy", "fat", "thin", "wide", "narrow", "dry", "wet", "dreamy", "lush", "gritty", "clean", "sharp", "smooth", "huge", "tight", "airy", "clear", "moving", "swirling", "metallic", "goosebumps", "plucky", "sustained", "snappy", "stacked", "deep", "crushed")
 
 
 def intents() -> list[Intent]:
@@ -477,6 +483,82 @@ def intents() -> list[Intent]:
             "tell me what needs fixing in the mix",
             "how does the mix look",
         ), refuse("I have not measured this mix yet. Analyse it in the mixer and I will tell you what is actually in it.")),
+    ]
+
+    # Sound design: a named patch is a different request from an adjective.
+    items += [
+        Intent("patch_reese", (
+            "give me a reese bass",
+            "I want a reese on the bass",
+            "make the bass a reese",
+            "that detuned drum and bass sound on the low end",
+        ), lambda scene, rng: ([act("sound", {"patch": "reese"}, track="bass")], "")),
+        Intent("patch_acid", (
+            "make the bass acid",
+            "I want a 303 line",
+            "give me an acid bassline sound",
+            "that squelchy resonant bass",
+        ), lambda scene, rng: ([act("sound", {"patch": "acid"}, track="bass")], "")),
+        Intent("patch_supersaw", (
+            "give the lead a big supersaw",
+            "I want the classic trance lead sound",
+            "make the melody a wide supersaw",
+        ), lambda scene, rng: ([act("sound", {"patch": "supersaw_lead"}, track="lead")], "")),
+        Intent("patch_pluck", (
+            "make the {track} a pluck stab",
+            "I want short stabs on the {track}",
+            "give the {track} that offbeat stab sound",
+        ), lambda scene, rng: ([act("sound", {"patch": "pluck_stab"}, track=scene.name("lead"))], "")),
+        Intent("patch_pad", (
+            "give the chords a warm pad",
+            "I want a soft pad underneath",
+            "make the chords a proper pad sound",
+        ), lambda scene, rng: ([act("sound", {"patch": rng.choice(["warm_pad", "glass_pad"])}, track="chords")], "")),
+        Intent("patch_sub", (
+            "make the bass a clean sub",
+            "I just want a sub under this",
+            "pure sub bass please",
+        ), lambda scene, rng: ([act("sound", {"patch": "sub_bass"}, track="bass")], "")),
+        Intent("patch_wobble", (
+            "give me a wobble bass",
+            "I want the bass wobbling",
+            "put an lfo on the bass filter",
+        ), lambda scene, rng: ([act("sound", {"patch": "wobble"}, track="bass")], "")),
+        Intent("synth_shorter_decay", (
+            "shorten the decay on the {track}",
+            "the {track} rings on too long",
+            "make the notes on the {track} die away faster",
+        ), lambda scene, rng: ([act("sound", {"decay": rng.choice([0.08, 0.12, 0.18])}, track=scene.name(scene.selected_role))], "")),
+        Intent("synth_filter_envelope", (
+            "give the {track} a filter envelope",
+            "I want the filter to snap on each note of the {track}",
+            "the {track} needs an envelope on the filter",
+        ), lambda scene, rng: ([act("character", {"character": "snappy"}, track=scene.name(scene.selected_role))], "")),
+        Intent("synth_detune", (
+            "detune the {track} more",
+            "stack more voices on the {track}",
+            "the {track} needs to be thicker and more detuned",
+        ), lambda scene, rng: ([act("character", {"character": "stacked"}, track=scene.name(scene.selected_role))], "")),
+        Intent("synth_sub_oscillator", (
+            "add a sub oscillator to the bass",
+            "the bass needs something an octave below",
+            "put a sub under the bass",
+        ), lambda scene, rng: ([act("character", {"character": "deep"}, track="bass")], "")),
+        Intent("synth_square", (
+            "make the {track} a square wave",
+            "switch the {track} to square",
+            "I want a hollow square on the {track}",
+        ), lambda scene, rng: ([act("sound", {"wave": "square"}, track=scene.name(scene.selected_role))], "")),
+        Intent("synth_crush", (
+            "bit crush the {track}",
+            "make the {track} sound crushed and dirty",
+            "add some bit reduction to the {track}",
+        ), lambda scene, rng: ([act("character", {"character": "crushed"}, track=scene.name(scene.selected_role))], "")),
+        Intent("synth_vibrato", (
+            "put some vibrato on the {track}",
+            "I want the {track} to sing a bit",
+            "add pitch movement to the held notes on the {track}",
+        ), lambda scene, rng: ([act("character", {"character": "singing"}, track=scene.name(scene.selected_role))], "")),
     ]
 
     items += [
