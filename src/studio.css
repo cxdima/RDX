@@ -2193,3 +2193,42 @@ svg {
     transition: none !important;
   }
 }
+
+/* The generators, as controls. Laid out as label/control rows because every
+   one of them is a musical decision the user should be able to read. */
+.write-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 0 4px;
+  border-top: 1px solid var(--line);
+  font-size: 12px;
+}
+.write-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.write-row > span {
+  color: #a1afb9;
+  white-space: nowrap;
+}
+.write-row select {
+  flex: 1 1 auto;
+  min-width: 0;
+  max-width: 260px;
+}
+.write-buttons {
+  display: flex;
+  gap: 8px;
+}
+.write-buttons > .text-button {
+  flex: 1 1 0;
+  justify-content: center;
+}
+.write-divider {
+  height: 1px;
+  background: var(--line);
+  margin: 4px 0;
+}

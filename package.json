@@ -9,6 +9,7 @@
     "start": "node scripts/start.mjs",
     "check": "tsc --noEmit",
     "test": ".venv/bin/python -m pytest -q",
+    "render": "mkdir -p artifacts/renders && RENDER_DIR=$PWD/artifacts/renders playwright test --config=scripts/render/records.config.ts --reporter=line",
     "test:browser": "playwright test",
     "format": "prettier --write src bridge/connection.js scripts/*.mjs tests/browser playwright.config.ts vite.config.ts"
   },

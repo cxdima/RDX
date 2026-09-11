@@ -27,7 +27,7 @@ from .engine import Unsupported, apply_actions, context, starter_project
 from .model import DATA, ROOT, LocalModel
 from .store import Conflict, Store
 
-DATA.mkdir(exist_ok=True)
+DATA.mkdir(parents=True, exist_ok=True)  # RDX_DATA_DIR may name a path that does not exist yet
 ASSETS = DATA / "audio"
 ASSETS.mkdir(exist_ok=True)
 RENDERS = DATA / "renders"

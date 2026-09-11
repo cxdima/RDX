@@ -36,8 +36,12 @@ test("studio playback, edits, history, exports and responsive views", async ({
   // Starting playback builds every voice and generates reverb impulse
   // responses, which takes real time on a loaded machine. This is not a
   // rendering wait to be tuned down; it is how long starting audio takes.
+  // Twelve seconds idle, and past thirty while the machine is also training a
+  // model or rendering a record — which is exactly when the suite gets run. A
+  // generous ceiling still fails if audio never starts; a tight one only ever
+  // reports that the machine was busy.
   await expect(page.getByRole("button", { name: "Stop playback" })).toBeVisible(
-    { timeout: 30_000 },
+    { timeout: 90_000 },
   );
   await expect
     .poll(() =>

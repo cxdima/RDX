@@ -50,6 +50,8 @@ import {
 } from "./types";
 import { studioAudio } from "./audio";
 import PianoRoll from "./PianoRoll";
+import Write, { DEFAULT_MELODY } from "./Write";
+import type { MelodySettings } from "./Write";
 
 const roleIcons = {
   drums: Drum,
@@ -298,6 +300,7 @@ export default function App() {
   const [recording, setRecording] = useState(false);
   const [recordSeconds, setRecordSeconds] = useState(0);
   const [variation, setVariation] = useState(1);
+  const [melody, setMelody] = useState<MelodySettings>(DEFAULT_MELODY);
   const [feedback, setFeedback] = useState("");
   const [mixReport, setMixReport] = useState<MixReport | null>(null);
   const uploadRef = useRef<HTMLInputElement>(null);
@@ -1265,6 +1268,15 @@ export default function App() {
                 {clip ? "New variation" : "Create phrase"}
               </button>
             </div>
+            {track.role === "audio" ? null : (
+              <Write
+                track={track}
+                disabled={locked || thinking || recording || busy}
+                melody={melody}
+                setMelody={setMelody}
+                onAction={action}
+              />
+            )}
             {track.role === "audio" ? (
               <div className="audio-editor">
                 {clip?.audio_id ? (

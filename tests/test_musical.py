@@ -1267,3 +1267,39 @@ def test_a_curve_outside_a_parameter_range_is_refused_in_plain_language(project,
 def test_a_curve_on_something_that_is_not_a_parameter_is_refused_by_name(project, selection):
     with pytest.raises(Unsupported, match="cutoff"):
         apply_actions(project, [Action(kind="automation", track="lead", section="Main", params={"parameter": "tempo", "points": [[0, 100], [8, 128]]})], selection)
+
+
+def javascript_names(source: str, name: str) -> list[str]:
+    """The names out of one exported TypeScript array, whether it holds bare
+    strings or [name, description] pairs."""
+    block = re.search(rf"export const {name}[^=]*=\s*\[(.*?)\n\]\s*as const;", source, re.S)
+    assert block, f"src/Write.tsx must export {name}"
+    body = block.group(1)
+    pairs = re.findall(r'\[\s*"([^"]*)"\s*,', body)
+    return pairs if pairs else re.findall(r'"([^"]*)"', body)
+
+
+def test_the_studio_offers_exactly_the_musical_vocabulary_python_has():
+    """A control offering a melody shape the engine has never heard of is a
+    button that reports success and changes nothing — the failure this project
+    exists to make impossible. So the two lists are compared, not trusted.
+
+    This caught a progression called "emotional" in the UI that Python has never
+    had."""
+    from rdx.musical import bass as bass_module
+    from rdx.musical import drums as drums_module
+    from rdx.musical import genres as genres_module
+    from rdx.musical import harmony as harmony_module
+    from rdx.musical import motif as motif_module
+
+    source = (ROOT / "src/Write.tsx").read_text()
+    for name, expected in (
+        ("CELLS", set(motif_module.CELLS)),
+        ("SHAPES", set(motif_module.SHAPES)),
+        ("FORMS", set(motif_module.FORMS)),
+        ("BASS_PATTERNS", set(bass_module.PATTERNS)),
+        ("KITS", set(drums_module.KITS)),
+        ("GENRES", set(genres_module.GENRES)),
+        ("PROGRESSIONS", set(harmony_module.NAMED_PROGRESSIONS)),
+    ):
+        assert set(javascript_names(source, name)) == expected, name
