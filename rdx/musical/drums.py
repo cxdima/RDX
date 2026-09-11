@@ -160,3 +160,34 @@ def build_roll(bars: int, start_bar: int, *, pitch: int = SNARE) -> list[Note]:
     """A standalone accelerating roll, for the last bars of a buildup."""
     end = bars * 4
     return [Note(pitch=pitch, start=beat, duration=min(0.1, end - beat), velocity=velocity) for beat, velocity in snare_roll(bars, start_bar) if beat < end]
+
+
+def decorate(notes: list[Note], bars: int, *, crash: bool = False, fill: bool = False, roll: bool = False, roll_from_bar: int | None = None) -> list[Note]:
+    """Add the gestures that mark a seam, keeping the pattern already playing.
+
+    "Put a crash on the drop" is not a request to rewrite the drop's drums. RDX
+    used to answer it by generating a default kit, which cost a mainstage drop
+    its double claps and sixteenth hats and looked from the outside like it had
+    worked — the worst kind of edit. Everything here adds to what is there.
+    """
+    end = bars * 4
+    kept = list(notes)
+    if crash:
+        # One crash on the downbeat, replacing any that is already there rather
+        # than stacking a second one on top of it.
+        kept = [n for n in kept if not (n.pitch == CRASH and n.start < 1)]
+        kept.append(Note(pitch=CRASH, start=0.0, duration=min(1.0, end), velocity=108))
+    if fill:
+        # The last bar turns into toms. The pattern's own hits in that space go,
+        # because a fill played underneath the groove is not a fill.
+        last = (bars - 1) * 4
+        kept = [n for n in kept if not (n.start >= last + 3 and n.pitch in {HAT, OPEN, SNARE, CLAP})]
+        for step, pitch in enumerate((HIGH_TOM, HIGH_TOM, MID_TOM, LOW_TOM)):
+            start = last + 3 + step * 0.25
+            if start < end:
+                kept.append(Note(pitch=pitch, start=round(start, 4), duration=min(0.2, end - start), velocity=88 + step * 4))
+    if roll:
+        start_bar = roll_from_bar if roll_from_bar is not None else max(0, bars - max(2, bars // 2))
+        kept = [n for n in kept if not (n.pitch == SNARE and n.start >= start_bar * 4)]
+        kept += build_roll(bars, start_bar)
+    return sorted(kept, key=lambda n: (n.start, n.pitch))

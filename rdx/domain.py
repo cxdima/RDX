@@ -207,7 +207,16 @@ class Track(Model):
 
 
 class Master(Model):
-    volume_db: float = Field(default=-3, ge=-30, le=0)
+    # Positive gain is allowed and is the point: you reach a limiter's ceiling by
+    # pushing into it. Capped at 0 this was a master fader that could only ever
+    # make a finished record quieter than it already was, and every rendered
+    # record measured about -34 LUFS — roughly 20 dB below a normal one.
+    #
+    # +6 is where a rendered drop lands at -13.9 LUFS with peaks at -1.4 dBFS,
+    # nothing clipped and 8.8 dB of crest left. +9 reaches -11.0 LUFS and clips
+    # 13,614 samples, which is the line a professional producer draws for mastering:
+    # as loud as you can get it without distorting.
+    volume_db: float = Field(default=6, ge=-30, le=12)
     ceiling: float = Field(default=-1, ge=-12, le=0)
     compression: float = Field(default=-18, ge=-60, le=0)
 
@@ -269,7 +278,7 @@ class Project(Model):
 
 
 class Action(Model):
-    kind: Literal["project", "compose", "drums", "kit", "transpose", "rhythm", "sound", "character", "harmony", "move", "mix", "arrange", "master", "notes", "add_track", "remove_track", "duplicate_track", "protect", "automation", "sidechain", "mix_fix", "phrase", "relate", "kit_sound", "bassline", "record"]
+    kind: Literal["project", "compose", "drums", "kit", "transpose", "rhythm", "sound", "character", "harmony", "move", "mix", "arrange", "master", "notes", "add_track", "remove_track", "duplicate_track", "protect", "automation", "sidechain", "mix_fix", "phrase", "relate", "kit_sound", "bassline", "melody", "record"]
     track: str | None = None
     section: str | None = None
     params: dict = Field(default_factory=dict)

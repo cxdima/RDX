@@ -111,15 +111,41 @@ def drop(project: Project, section_id: str, *, intensity: float = 1.0, kit: str 
 
 
 def breakdown(project: Project, section_id: str, *, keep: list[str] | None = None) -> list[Action]:
-    """Strip back to atmosphere: drums and bass out, space in."""
+    """Strip back to atmosphere: drums and bass out, space in.
+
+    The lead stays. A trance breakdown is where the melody you remember lives —
+    taking it out leaves sixteen bars of pad, which is not a breakdown, it is a
+    gap. Name `keep` explicitly for a breakdown that really is only atmosphere.
+    """
     section = section_of(project, section_id)
     silent = [[0, -60], [max(section.bars * 4 - 0.01, 0.01), -60]]
-    kept = {name.lower() for name in keep or ["pad", "chords"]}
+    kept = {name.lower() for name in keep or ["pad", "chords", "lead"]}
     actions: list[Action] = [Action(kind="arrange", section=section_id, params={"operation": "update", "energy": 0.25})]
     for track in editable(project):
         stays = track.role in kept or track.name.lower() in kept
+        if track.role == "drums" and not stays:
+            # The kick goes; the pulse does not. a producer's rule for
+            # arranging is that a crowd cannot dance unless it knows where the
+            # beat is, so something rhythmic keeps running whenever the kick
+            # drops out. Silencing the whole kit instead left sixteen bars with
+            # no time in them at all, thirty decibels under the drop.
+            actions.append(Action(kind="kit", track=track.id, section=section_id, params={
+                "layers": {"kick": "none", "clap": "none", "snare": "none", "open": "none", "hat": "eighth"},
+                "density": 0.5,
+                "pickup": False,
+            }))
+            continue
         if stays:
-            actions.append(Action(kind="character", track=track.id, params={"character": "dreamy", "intensity": 0.6}))
+            # Scoped to this section, which a character change cannot be: a
+            # sound belongs to the track, so making the pads dreamy *here* made
+            # them dreamy everywhere, and left the lead carrying both drops with
+            # a 0.2 second attack. Reverb and cutoff say the same thing and stop
+            # at the section line.
+            held = max(section.bars * 4 - 0.01, 0.01)
+            wash = round(min(1.0, track.sound.reverb + 0.3), 4)
+            soft = round(max(400.0, track.sound.cutoff * 0.7), 1)
+            actions.append(Action(kind="automation", track=track.id, section=section_id, params={"parameter": "reverb", "points": [[0, wash], [held, wash]]}))
+            actions.append(Action(kind="automation", track=track.id, section=section_id, params={"parameter": "cutoff", "points": [[0, soft], [held, soft]]}))
         else:
             actions.append(Action(kind="automation", track=track.id, section=section_id, params={"parameter": "volume_db", "points": list(silent)}))
     return actions
@@ -167,15 +193,27 @@ def pump(project: Project, *, shape: str = "pump", source: str | None = None, tr
     return [Action(kind="sidechain", track=track.id, params=dict(settings)) for track in targets]
 
 
-def transition(project: Project, section_id: str, *, beats: float = 4.0, crash: bool = True, sweep: bool = True, impact: bool = True) -> list[Action]:
+def transition(project: Project, section_id: str, *, beats: float = 4.0, crash: bool | None = None, sweep: bool | None = None, impact: bool | None = None) -> list[Action]:
     """The join between two sections: a sweep out, a crash in, a moment of air.
 
     A transition is the one thing a producer hears immediately when it is
     missing. It is three small gestures at the seam rather than one effect:
-    the outgoing section opens up, everything drops for a beat, and the new
-    one starts on a crash.
+    the outgoing section opens up, everything drops for a beat, and the new one
+    starts on a crash.
+
+    Which of the three belong depends on what is on the other side of the join.
+    Into a drop you want all of it — the half-beat of silence is what makes the
+    downbeat land. Into a breakdown you want none of it: a crash on the first
+    bar of a breakdown is a door slamming in a quiet room, and a gap before
+    something that is already quiet is just a hole. So the sweep always runs and
+    the other two follow the section ahead. Naming any of them wins over that.
     """
     section = section_of(project, section_id)
+    following = next((s for s in project.sections[project.sections.index(section) + 1:]), None)
+    rising = following is None or following.energy >= section.energy
+    crash = rising if crash is None else crash
+    sweep = True if sweep is None else sweep
+    impact = rising if impact is None else impact
     length = section.bars * 4
     if not 0 < beats <= length:
         raise ValueError("The transition has to be shorter than the section it ends")

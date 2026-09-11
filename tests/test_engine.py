@@ -142,6 +142,11 @@ EVERY_KIND = [
     Action(kind="move", section="Build", params={"name": "transition"}),
     Action(kind="move", section="Main", params={"name": "riser"}),
     Action(kind="move", section="Main", params={"name": "double_time"}),
+    Action(kind="melody", track="lead", section="Main", params={"cell": "pluck", "shape": "wave", "form": "trance", "progression": "trance"}),
+    # Naming neither a kit nor its layers decorates what is already playing,
+    # which is a different path through the branch from generating a pattern.
+    Action(kind="kit", track="drums", section="Main", params={"crash": True, "fill": True}),
+    Action(kind="record", params={"genre": "trance"}),
 ]
 
 
@@ -217,6 +222,9 @@ def test_long_chains_of_edits_never_produce_an_invalid_project():
         ("move", {"name": "layer", "track": "lead", "preset": "bell"}, None, None),
         ("duplicate_track", {}, "lead", None),
         ("transpose", {"semitones": -12}, "lead", "Main"),
+        ("melody", {"cell": "roll", "shape": "hook", "form": "driving", "anchor": "chord", "progression": "epic"}, "lead", "Main"),
+        ("melody", {"cell": "anthem", "shape": "ascent", "form": "answer", "progression": "trance"}, "lead", "Main"),
+        ("kit", {"crash": True, "fill": True, "roll": True}, "drums", "Main"),
     ]
     for seed in range(40):
         rng = random.Random(seed)

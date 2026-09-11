@@ -40,6 +40,17 @@ class Genre:
     bass: str = "offbeat"
     # Sounds, by role.
     patches: dict[str, str] = field(default_factory=dict)
+    # The lead's identity: the rhythm of its idea, where that idea goes, and
+    # what happens to it over eight bars. A genre is as recognisable by its
+    # melodic behaviour as by its kick.
+    cell: str = "pluck"
+    shape: str = "wave"
+    form: str = "trance"
+    anchor: str = "key"
+    # The melody a breakdown gets instead. In trance this is the part people
+    # actually remember, and it is not the drop's line played quieter — it is
+    # long notes you can sing.
+    breakdown_cell: str = "anthem"
     # How hard everything ducks under the kick.
     duck: str = "pump"
     # Which parts play at all. A psytrance record with big pad chords under it
@@ -60,6 +71,9 @@ GENRES: dict[str, Genre] = {
         layers={"kick": "four_floor", "clap": "double", "hat": "sixteenth", "open": "offbeat"},
         bass="offbeat",
         patches={"bass": "sub_bass", "chords": "supersaw_lead", "lead": "supersaw_lead", "pad": "warm_pad"},
+        cell="pluck",
+        shape="wave",
+        form="trance",
         duck="pump",
     ),
     "psytrance": Genre(
@@ -73,6 +87,11 @@ GENRES: dict[str, Genre] = {
         layers={"kick": "four_floor", "hat": "offbeat", "open": "offbeat", "clap": "none", "snare": "none"},
         bass="rolling",
         patches={"bass": "sub_bass", "lead": "acid", "pad": "glass_pad"},
+        cell="roll",
+        shape="hook",
+        form="driving",
+        anchor="chord",
+        breakdown_cell="call",
         duck="tight",
         chords=False,
     ),
@@ -81,12 +100,16 @@ GENRES: dict[str, Genre] = {
         tempo=132,
         scale="minor",
         progression="driving",
-        structure="short",
+        structure="club",
         kit="rolling",
         machine="hard",
         layers={"kick": "four_floor", "hat": "sixteenth", "open": "offbeat", "clap": "backbeat"},
         bass="driving",
         patches={"bass": "gritty_bass", "lead": "donk", "pad": "glass_pad"},
+        cell="stab",
+        shape="hover",
+        form="driving",
+        breakdown_cell="call",
         duck="tight",
         chords=False,
     ),
@@ -101,6 +124,9 @@ GENRES: dict[str, Genre] = {
         layers={"kick": "four_floor", "clap": "backbeat", "hat": "eighth", "open": "offbeat"},
         bass="offbeat",
         patches={"bass": "sub_bass", "chords": "organ", "lead": "pluck_stab", "pad": "warm_pad"},
+        cell="call",
+        shape="arch",
+        form="answer",
         duck="gentle",
     ),
     "hardstyle": Genre(
@@ -108,12 +134,15 @@ GENRES: dict[str, Genre] = {
         tempo=150,
         scale="minor",
         progression="epic",
-        structure="short",
+        structure="anthem",
         kit="mainstage",
         machine="hard",
         layers={"kick": "four_floor", "clap": "backbeat", "hat": "eighth"},
         bass="halftime",
         patches={"bass": "gritty_bass", "chords": "supersaw_lead", "lead": "hoover", "pad": "warm_pad"},
+        cell="drive",
+        shape="ascent",
+        form="anthem",
         duck="extreme",
     ),
 }
@@ -122,6 +151,10 @@ GENRES: dict[str, Genre] = {
 # "Drop" should sound like one whatever structure it arrived in.
 ENERGETIC = ("drop", "main")
 QUIET = ("breakdown", "intro", "outro")
+# Sections that set a record up or wind it down. The hook has no business in
+# either: a melody playing from bar one is a melody nobody gets to wait for, and
+# the whole point of a breakdown is that it is where the tune finally arrives.
+ATMOSPHERE = ("intro", "outro")
 
 
 def roles_for(genre: Genre) -> set[str]:
@@ -177,10 +210,18 @@ def parts_for(project: Project, name: str, section_names: list[str]) -> list[Act
             continue
         low = section.name.split()[0].lower() in QUIET
         energy = section.energy
+        # "Drop 2" rather than "Drop": a section the arrangement has already
+        # been through once. The second drop is the same drop — the melody has
+        # to be recognisably the one you have been waiting for — but it cannot
+        # be note-for-note identical either, or the record stops going anywhere
+        # halfway through. So the tune is kept and taken an octave up, which is
+        # what trance has done with a final drop for thirty years.
+        tail = section.name.split()[-1]
+        again = tail.isdigit() and int(tail) > 1
         actions.append(Action(kind="kit", track="drums", section=section.id, params={
             "kit": genre.kit,
             "layers": dict(genre.layers) if not low else {**genre.layers, "hat": "eighth", "open": "none"},
-            "density": round(min(1.0, 0.35 + energy * 0.65), 3),
+            "density": round(min(1.0, 0.35 + energy * 0.65 + (0.08 if again else 0)), 3),
             "crash": energy >= 0.9,
             # The pickup kick before the bar line collides with a bass that
             # already fills that gap, which is exactly what rolling bass does.
@@ -190,8 +231,19 @@ def parts_for(project: Project, name: str, section_names: list[str]) -> list[Act
             actions.append(Action(kind="harmony", track="chords", section=section.id, params={"progression": genre.progression, "span": 4}))
         if "bass" in roles and not low:
             actions.append(Action(kind="bassline", track="bass", section=section.id, params={"pattern": genre.bass, "progression": genre.progression}))
-        if "lead" in roles and energy >= 0.55:
-            actions.append(Action(kind="compose", track="lead", section=section.id, params={"density": round(min(1.0, energy), 3), "variation": 1}))
+        if "lead" in roles and section.name.split()[0].lower() not in ATMOSPHERE:
+            # The lead plays in a breakdown too, and it is the reason the
+            # breakdown exists. What changes is the rhythm of the idea, not
+            # the volume of it.
+            actions.append(Action(kind="melody", track="lead", section=section.id, params={
+                "cell": genre.breakdown_cell if low else genre.cell,
+                "shape": genre.shape,
+                "form": genre.form,
+                "anchor": genre.anchor,
+                "progression": genre.progression,
+                "density": round(min(1.0, max(0.4, 0.45 + energy * 0.55)), 3),
+                **({"low": 72, "high": 96} if again and not low else {}),
+            }))
     return actions
 
 
@@ -219,5 +271,14 @@ def shape_for(project: Project, name: str, section_names: list[str]) -> list[Act
             }))
         elif word == "breakdown":
             actions.append(Action(kind="move", section=section.id, params={"name": "breakdown"}))
+    # A fill in the last bar of any section that leads somewhere bigger. It is
+    # the clearest signal in dance music that something is about to change, and
+    # its absence is most of why a generated arrangement sounds like a loop
+    # rather than a record. Builds are left alone: they end on a roll and a cut,
+    # which is their own way of saying the same thing, and two of those at once
+    # is a mess.
+    for here, following in zip(project.sections, project.sections[1:]):
+        if here.name in section_names and following.energy > here.energy + 0.1 and here.name.split()[0].lower() != "build":
+            actions.append(Action(kind="kit", track="drums", section=here.id, params={"fill": True}))
     actions.append(Action(kind="move", params={"name": "pump", "shape": genre.duck}))
     return actions

@@ -65,7 +65,7 @@ PATCHES: dict[str, Patch] = {
         "a pure sine under everything, with nothing above it to get in the way",
         ("bass",),
         {"preset": "sub", "wave": "sine", "unison": 1, "cutoff": 220, "resonance": 0.7,
-         "attack": 0.006, "decay": 0.2, "sustain": 0.95, "release": 0.18, "sub": 0.0, "width": 0, "reverb": 0, "delay": 0, "low": 2},
+         "attack": 0.006, "decay": 0.2, "sustain": 0.95, "release": 0.18, "sub": 0.0, "width": 0, "reverb": 0, "delay": 0, "low": 0},
     ),
     "donk": Patch(
         "a hard, hollow square with a fast filter snap",
