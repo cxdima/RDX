@@ -54,18 +54,39 @@ function oscillator(sound: Sound): Tone.OmniOscillatorOptions {
   return { type: base } as unknown as Tone.OmniOscillatorOptions;
 }
 
+// Measured on a rendered trance drop, each part alone: drums -23 LUFS, bass
+// -22, chords -40, lead -40. Seventeen decibels between the rhythm section and
+// the melody is not a balance, it is a record you cannot hear the tune of. The
+// sustained presets were the quiet ones; the master chain now does the
+// loudness, so they can sit where a mix needs them.
 const PRESET_VOLUME: Record<string, number> = {
-  supersaw: -12,
-  strings: -13,
-  choir: -9,
-  pad: -13,
-  sub: -4,
+  supersaw: -6,
+  strings: -7,
+  choir: -6,
+  pad: -7,
+  // Was -4, six to nine dB above every other preset. A rendered trance drop
+  // measured its 40-80 Hz band thirty decibels above everything past 320 Hz —
+  // not bass-heavy, only bass — and the same hot sub was what overshot the
+  // limiter. In line with the rest, the master chain does the loudness.
+  sub: -10,
   bell: -12,
   fm: -11,
   sine: -8,
   pluck: -8,
   saw: -10,
 };
+
+/** Where a voice's fader sits before the track and master do their part.
+ *
+ * Tone scales every unison voice to -6 - count * 1.1 dB. Seven of them summing
+ * incoherently give back about +8.5, so a supersaw lands 5 dB *quieter* than
+ * one plain saw — the opposite of what unison is for, and measured on a rendered
+ * drop as a lead 10 dB under the kick. The 5 dB is given back here, in the one
+ * place both synth paths read from, because it hid for a night in a branch the
+ * supersaw never took. */
+function voiceVolume(sound: Sound): number {
+  return (PRESET_VOLUME[sound.preset] ?? -10) + (sound.unison > 1 ? 5 : 0);
+}
 
 export function createVoice(sound: Sound, destination: Destination): Voice {
   const nodes: { dispose(): unknown }[] = [];
@@ -146,7 +167,8 @@ export function createVoice(sound: Sound, destination: Destination): Voice {
         octaves,
         exponent: 2,
       },
-      volume: (PRESET_VOLUME[sound.preset] ?? -10) - 2,
+      // A resonant filter per voice runs hot; two decibels keeps it in line.
+      volume: voiceVolume(sound) - 2,
     });
   } else {
     switch (sound.preset) {
@@ -176,7 +198,7 @@ export function createVoice(sound: Sound, destination: Destination): Voice {
         synth = new Tone.PolySynth(Tone.Synth, {
           oscillator: oscillator(sound),
           envelope,
-          volume: PRESET_VOLUME[sound.preset] ?? -10,
+          volume: voiceVolume(sound),
         });
     }
   }

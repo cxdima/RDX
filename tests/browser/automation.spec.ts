@@ -1,0 +1,210 @@
+import { test, expect } from "@playwright/test";
+
+/**
+ * Automation belongs to the section it was drawn in.
+ *
+ * A Web Audio parameter holds whatever value it was last given, forever. So a
+ * lane that ends at -60 dB — which is exactly what a buildup's cut before the
+ * drop is — stayed in force for every section after it, and the rest of the
+ * record never made a sound. A rendered psytrance record measured -38 dBFS
+ * through its intro and then -75 dBFS through its drop.
+ *
+ * Nothing that reads the project can see this: the notes are all there and the
+ * automation is correct. It is only audible, so this test listens.
+ */
+function sound(preset: string) {
+  return {
+    preset,
+    cutoff: 12000,
+    resonance: 1,
+    attack: 0.001,
+    decay: 0.3,
+    sustain: 0.9,
+    release: 0.1,
+    filter_env: 0,
+    filter_decay: 0.3,
+    wave: "preset",
+    unison: 1,
+    spread: 0,
+    sub: 0,
+    octave: 0,
+    reverb: 0,
+    delay: 0,
+    drive: 0,
+    crush: 0,
+    low: 0,
+    mid: 0,
+    high: 0,
+    chorus: 0,
+    flanger: 0,
+    phaser: 0,
+    autopan: 0,
+    motion_rate: 0.4,
+    width: 0,
+    glide: 0,
+    lfo_target: "off",
+    lfo_depth: 0,
+    lfo_rate: 4,
+  };
+}
+
+/** Two bars of held notes. The first bar fades itself to silence, the way a
+ *  buildup cuts before a drop; the second automates nothing at all. */
+function project() {
+  const cut = { id: "sec000000001", name: "Build", bars: 1, energy: 0.8 };
+  const drop = { id: "sec000000002", name: "Drop", bars: 1, energy: 1 };
+  const note = (id: string) => ({
+    id,
+    pitch: 57,
+    start: 0,
+    duration: 3.9,
+    velocity: 100,
+  });
+  return {
+    id: "prj000000002",
+    name: "Automation scope",
+    revision: 0,
+    tempo: 120,
+    key: "A",
+    scale: "minor",
+    seed: 1,
+    sections: [cut, drop],
+    master: { volume_db: 0, ceiling: 0, compression: 0 },
+    tracks: [
+      {
+        id: "trklead00001",
+        name: "Lead",
+        role: "lead",
+        color: "#bde66c",
+        volume_db: -6,
+        pan: 0,
+        mute: false,
+        solo: false,
+        locked: false,
+        sound: sound("sine"),
+        kit: null,
+        sidechain: null,
+        clips: [
+          {
+            id: "clpcut000001",
+            name: "Build",
+            section_id: cut.id,
+            notes: [note("not000000001")],
+            audio_id: null,
+            audio_offset: 0,
+          },
+          {
+            id: "clpdrop00001",
+            name: "Drop",
+            section_id: drop.id,
+            notes: [note("not000000002")],
+            audio_id: null,
+            audio_offset: 0,
+          },
+        ],
+        automation: [
+          {
+            id: "aut000000001",
+            section_id: cut.id,
+            parameter: "volume_db",
+            points: [
+              [0, -6],
+              [3, -60],
+            ],
+          },
+        ],
+      },
+    ],
+  };
+}
+
+test("a section that automates nothing plays at full level", async ({
+  page,
+}) => {
+  const errors: string[] = [];
+  page.on("pageerror", (error) => errors.push(error.message));
+  await page.goto("/");
+  await expect(
+    page.getByRole("heading", { name: "Your session" }),
+  ).toBeVisible();
+
+  const levels = await page.evaluate(async (source) => {
+    const blob = await window.rdx.audio.render(source as never);
+    const view = new DataView(await blob.arrayBuffer());
+    const rate = view.getUint32(24, true);
+    const samples = (view.byteLength - 44) / 4;
+    const level = (from: number, to: number) => {
+      let sum = 0;
+      let counted = 0;
+      for (
+        let i = Math.round(from * rate);
+        i < Math.min(Math.round(to * rate), samples);
+        i++
+      ) {
+        const value = view.getInt16(44 + i * 4, true) / 32768;
+        sum += value * value;
+        counted++;
+      }
+      return counted ? Math.sqrt(sum / counted) : 0;
+    };
+    // 120 BPM: a bar is two seconds. Measure the opening of the faded bar, its
+    // silent end, and the middle of the bar that follows it.
+    return {
+      opening: level(0.1, 0.4),
+      faded: level(1.8, 1.95),
+      after: level(2.3, 2.8),
+    };
+  }, project());
+
+  expect(levels.opening).toBeGreaterThan(0.01);
+  expect(levels.faded).toBeLessThan(levels.opening * 0.2);
+  // The whole point: the next section never asked to be quiet, so it is not.
+  expect(levels.after).toBeGreaterThan(levels.opening * 0.5);
+  expect(errors).toEqual([]);
+});
+
+test("a finished record is loud enough to be a record, and does not clip", async ({
+  page,
+}) => {
+  const errors: string[] = [];
+  page.on("pageerror", (error) => errors.push(error.message));
+  await page.goto("/");
+  await expect(
+    page.getByRole("heading", { name: "Your session" }),
+  ).toBeVisible();
+
+  // The master chain was a compressor into a limiter with nothing in between.
+  // Both only ever turn things down, so the ceiling was unreachable and every
+  // record rendered about 20 dB below a normal one. a producer's own
+  // description of mastering is compression to bring loudness up and a limiter
+  // to get as loud as possible *without distorting*, so this measures both.
+  // The shared fixture flattens the master to zeroes so the automation test
+  // measures the fader alone. This one is about the master chain itself, so it
+  // uses the real defaults from rdx/domain.py.
+  const loud = {
+    ...project(),
+    master: { volume_db: 6, ceiling: -1, compression: -18 },
+  };
+  const measured = await page.evaluate(async (source) => {
+    const blob = await window.rdx.audio.render(source as never);
+    const view = new DataView(await blob.arrayBuffer());
+    const total = (view.byteLength - 44) / 4;
+    let sum = 0;
+    let peak = 0;
+    let clipped = 0;
+    for (let i = 0; i < total; i++) {
+      const value = view.getInt16(44 + i * 4, true) / 32768;
+      sum += value * value;
+      peak = Math.max(peak, Math.abs(value));
+      if (Math.abs(value) >= 0.999) clipped++;
+    }
+    return { rms: Math.sqrt(sum / total), peak, clipped };
+  }, loud);
+
+  expect(measured.clipped).toBe(0);
+  expect(measured.peak).toBeLessThanOrEqual(1);
+  // Well above the -34 LUFS the purely-downward chain produced. A held note at
+  // -6 dB through the whole chain has to arrive somewhere near full scale.
+  expect(20 * Math.log10(measured.peak)).toBeGreaterThan(-12);
+  expect(errors).toEqual([]);
+});

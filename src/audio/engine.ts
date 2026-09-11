@@ -1,11 +1,23 @@
 import * as Tone from "tone";
-import type { Project } from "../types";
+import type { Project, Track } from "../types";
 import { createKit } from "./drums";
 import { createChain, ready } from "./effects";
 import { createVoice } from "./instruments";
 import { duckingPoints, sourceNotes, triggerBeats } from "./sidechain";
 
 type Disposable = { dispose(): unknown };
+
+/** Where an automated parameter sits when no lane is driving it.
+ *
+ * This is what a section without automation has to put the parameter back to.
+ * Every name here is in AUTOMATION_RANGES in rdx/domain.py; two of them live on
+ * the channel and the rest are ordinary sound settings. */
+function baseValue(track: Track, parameter: string): number | undefined {
+  if (parameter === "volume_db") return track.volume_db;
+  if (parameter === "pan") return track.pan;
+  const value = (track.sound as unknown as Record<string, unknown>)[parameter];
+  return typeof value === "number" ? value : undefined;
+}
 
 export class StudioAudio {
   private nodes: Disposable[] = [];
@@ -58,11 +70,25 @@ export class StudioAudio {
     const transport = Tone.getTransport();
     const secondsPerBeat = 60 / project.tempo;
     transport.bpm.value = project.tempo;
+    // A compressor and a limiter can only ever turn things down. Without a
+    // makeup stage between them the ceiling is unreachable by construction: the
+    // whole chain was purely downward, every rendered record measured about
+    // -34 LUFS, and the ceiling control did nothing at all.
+    //
+    // Makeup is the gain a downward compressor gives back for what it took:
+    // |threshold| x (1 - 1/ratio). The standard description of
+    // mastering is compression to bring the loudness up across the spectrum and
+    // then a limiter to get as loud as possible without distorting, which is
+    // this chain in that order.
+    const ratio = 2;
+    const makeup = Math.abs(project.master.compression) * (1 - 1 / ratio);
     const output = new Tone.Volume(project.master.volume_db);
-    const compressor = new Tone.Compressor(project.master.compression, 2);
+    const compressor = new Tone.Compressor(project.master.compression, ratio);
+    const recovered = new Tone.Volume(makeup);
     const limiter = new Tone.Limiter(project.master.ceiling);
     const meter = new Tone.Meter({ smoothing: 0.7 });
-    output.chain(compressor, limiter, meter, Tone.getDestination());
+    output.chain(compressor, recovered, limiter, meter, Tone.getDestination());
+    this.nodes.push(recovered);
     this.master = output;
     this.outputMeter = meter;
     this.nodes.push(output, compressor, limiter, meter);
@@ -178,31 +204,50 @@ export class StudioAudio {
         }
       }
 
-      for (const lane of track.automation) {
+      // Automation belongs to the section it was drawn in. A lane sets a value
+      // and a Web Audio parameter then holds it forever, so a section that
+      // automates nothing has to actively put the parameter back — otherwise a
+      // buildup's cut to silence at the end of the build is still in force
+      // during the drop, and the rest of the record never makes a sound.
+      for (const parameterName of animated) {
         // Every automatable name in rdx/domain.py has to land on a real signal
         // here; a test asserts the two lists stay the same length.
         const parameter =
-          lane.parameter === "volume_db"
+          parameterName === "volume_db"
             ? channel.volume
-            : lane.parameter === "pan"
+            : parameterName === "pan"
               ? channel.pan
-              : chain.params[lane.parameter as keyof typeof chain.params];
+              : chain.params[parameterName as keyof typeof chain.params];
         if (!parameter) continue;
-        transport.schedule(
-          (time) => {
-            parameter.cancelScheduledValues(time);
-            lane.points.forEach(([beat, value], index) => {
-              if (index === 0)
-                parameter.setValueAtTime(value, time + beat * secondsPerBeat);
-              else
-                parameter.linearRampToValueAtTime(
-                  value,
-                  time + beat * secondsPerBeat,
-                );
-            });
-          },
-          (offsets.get(lane.section_id) || 0) * secondsPerBeat,
+        const resting = baseValue(track, parameterName);
+        const lanes = new Map(
+          track.automation
+            .filter((lane) => lane.parameter === parameterName)
+            .map((lane) => [lane.section_id, lane]),
         );
+        for (const section of project.sections) {
+          const lane = lanes.get(section.id);
+          transport.schedule(
+            (time) => {
+              parameter.cancelScheduledValues(time);
+              if (!lane) {
+                if (resting !== undefined)
+                  parameter.setValueAtTime(resting, time);
+                return;
+              }
+              lane.points.forEach(([beat, value], index) => {
+                if (index === 0)
+                  parameter.setValueAtTime(value, time + beat * secondsPerBeat);
+                else
+                  parameter.linearRampToValueAtTime(
+                    value,
+                    time + beat * secondsPerBeat,
+                  );
+              });
+            },
+            (offsets.get(section.id) || 0) * secondsPerBeat,
+          );
+        }
       }
     }
   }

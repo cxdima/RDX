@@ -119,26 +119,30 @@ export function createKit(
   const clap = noiseVoice(destination, "bandpass", 1250, 0.09, -10, 1.6);
   clap.nodes.forEach(keep);
 
+  // A rendered kit alone measured 0% of its power above 400 Hz: the hats at
+  // -17 dB with a 35 ms tail did not register at all, so the top of the mix was
+  // missing and every record read as closed in. Six decibels up puts them where
+  // a producer would have the fader.
   const hat = noiseVoice(
     destination,
     "highpass",
     kit.hat_tone,
     kit.hat_decay,
-    -17,
+    -11,
   );
   const pedal = noiseVoice(
     destination,
     "highpass",
     kit.hat_tone * 0.82,
     kit.hat_decay * 0.63,
-    -20,
+    -14,
   );
   const open = noiseVoice(
     destination,
     "highpass",
     kit.hat_tone * 0.92,
     kit.open_decay,
-    -19,
+    -13,
   );
   const crash = noiseVoice(destination, "highpass", 4200, 1.6, -16);
   const ride = noiseVoice(destination, "bandpass", 5200, 0.5, -21, 0.8);

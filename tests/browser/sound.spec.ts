@@ -235,3 +235,79 @@ test("an 808 kick rings longer than a 909 kick in the audio", async ({
   const eight = await renderAndMeasure(page, await kickOnly("808"), 0.45, 0.7);
   expect(eight.level).toBeGreaterThan(nine.level * 2);
 });
+
+test("unison really thickens a sound rather than just being stored", async ({
+  page,
+  request,
+}) => {
+  test.setTimeout(120_000);
+  const errors: string[] = [];
+  page.on("pageerror", (error) => errors.push(error.message));
+  await page.goto("/");
+  await expect(
+    page.getByRole("heading", { name: "Your session" }),
+  ).toBeVisible();
+
+  // Supersaw is what carries both the chords and the lead of a trance record,
+  // and unison is the whole of what makes it a supersaw. A setting that is
+  // stored in the project, shown in the UI and does nothing to the sound is the
+  // exact failure this project is built to make impossible — so this listens.
+  const dry = {
+    reverb: 0,
+    delay: 0,
+    filter_env: 0,
+    cutoff: 16000,
+    wave: "saw",
+  };
+  const single = await soloLeadProject(request, "One voice", {
+    ...dry,
+    preset: "saw",
+    unison: 1,
+    spread: 0,
+  });
+  const fat = await soloLeadProject(request, "Seven voices", {
+    ...dry,
+    preset: "saw",
+    unison: 7,
+    spread: 40,
+  });
+
+  /** How much the level wanders over the sustain of one held note.
+   *
+   * Seven saws a few cents apart drift in and out of phase with each other, so
+   * the sum breathes. One saw at a steady pitch does not. */
+  const wobble = (project: unknown) =>
+    page.evaluate(async (source) => {
+      const blob = await window.rdx.audio.render(source as never);
+      const view = new DataView(await blob.arrayBuffer());
+      const rate = view.getUint32(24, true);
+      const total = (view.byteLength - 44) / 4;
+      const windows: number[] = [];
+      // 20 ms windows across the middle of the note, past the attack.
+      const width = Math.round(rate * 0.02);
+      for (
+        let at = Math.round(rate * 0.3);
+        at + width < Math.min(total, rate * 1.5);
+        at += width
+      ) {
+        let sum = 0;
+        for (let i = at; i < at + width; i++) {
+          const value = view.getInt16(44 + i * 4, true) / 32768;
+          sum += value * value;
+        }
+        windows.push(Math.sqrt(sum / width));
+      }
+      const mean = windows.reduce((a, b) => a + b, 0) / windows.length;
+      const spread = Math.sqrt(
+        windows.reduce((a, b) => a + (b - mean) ** 2, 0) / windows.length,
+      );
+      return { mean, wander: mean > 0 ? spread / mean : 0 };
+    }, project);
+
+  const one = await wobble(single);
+  const seven = await wobble(fat);
+  expect(one.mean).toBeGreaterThan(0.001);
+  expect(seven.mean).toBeGreaterThan(0.001);
+  expect(seven.wander).toBeGreaterThan(one.wander * 2);
+  expect(errors).toEqual([]);
+});
