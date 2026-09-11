@@ -2527,6 +2527,44 @@ export default function App() {
                     ? "Transfer rendered audio with editable MIDI tracks. Each transfer adds new tracks to the open Set."
                     : "The RDX bridge device needs to be open in your Live Set."}
                 </p>
+                {status?.bridge.connected &&
+                  status.bridge.device_version !==
+                    status.bridge.device_current && (
+                    <p className="bridge-stale">
+                      The device in Live is running an older script (v
+                      {status.bridge.device_version ?? "?"} against v
+                      {status.bridge.device_current}). Drag it off the track and
+                      back on to update it — Max does not reload it on its own.
+                    </p>
+                  )}
+                {status?.bridge.connected && status.bridge.live.tracks && (
+                  <div className="live-set">
+                    <h3>
+                      In Live{" "}
+                      <span className="muted">
+                        / {status.bridge.live.tempo} BPM,{" "}
+                        {status.bridge.live.tracks.length} tracks
+                      </span>
+                    </h3>
+                    <ul>
+                      {status.bridge.live.tracks.map((track, index) => (
+                        <li key={`${track.name}-${index}`}>
+                          <span className={track.midi ? "midi" : "audio"}>
+                            {track.midi ? "MIDI" : "audio"}
+                          </span>
+                          <strong>{track.name}</strong>
+                          <em>
+                            {track.devices
+                              .map(
+                                (d) => d.kind + (d.plugin ? " (plugin)" : ""),
+                              )
+                              .join(", ") || "no devices"}
+                          </em>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
                 <a className="text-button" href="/api/bridge/device" download>
                   <ArrowDownToLine size={15} />
                   RDX bridge device

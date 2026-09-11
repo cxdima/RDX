@@ -1417,6 +1417,65 @@ svg {
     gap: 12px;
   }
 }
+.bridge-stale {
+  color: #e8a34a;
+  font-size: 11px;
+  line-height: 1.5;
+  border-left: 2px solid #e8a34a;
+  padding-left: 10px;
+}
+.live-set {
+  width: 100%;
+  margin-top: 6px;
+  text-align: left;
+}
+.live-set h3 {
+  font-size: 11px;
+  margin-bottom: 8px;
+}
+.live-set ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 190px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.live-set li {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 11px;
+  padding: 4px 8px;
+  background: #1e2225;
+  border-radius: 3px;
+}
+.live-set li span {
+  font-size: 8px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #81898f;
+  width: 34px;
+  flex-shrink: 0;
+}
+.live-set li span.midi {
+  color: #ac9ae8;
+}
+.live-set li strong {
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.live-set li em {
+  margin-left: auto;
+  font-style: normal;
+  color: #81898f;
+  font-size: 10px;
+  white-space: nowrap;
+}
 .record-view {
   padding: 10px 25px 30px;
 }

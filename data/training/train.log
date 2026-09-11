@@ -54,3 +54,18 @@ Iter 200: Val loss 0.232, Val took 27.633s
 Iter 200: Train loss 0.249, Learning Rate 5.613e-05, It/sec 0.075, Tokens/sec 8.524, Trained Tokens 23031, Peak mem 16.600 GB
 Iter 200: Saved adapter weights to /Users/dmoiseenko/Development/RDX/data/models/rdx-v3/adapters.safetensors and /Users/dmoiseenko/Development/RDX/data/models/rdx-v3/0000200_adapters.safetensors.
 Iter 220: Train loss 0.226, Learning Rate 5.497e-05, It/sec 0.074, Tokens/sec 8.883, Trained Tokens 25420, Peak mem 16.600 GB
+Iter 240: Train loss 0.200, Learning Rate 5.367e-05, It/sec 0.074, Tokens/sec 8.689, Trained Tokens 27760, Peak mem 16.600 GB
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "/Users/dmoiseenko/Development/RDX/.venv/lib/python3.12/site-packages/mlx_lm/lora.py", line 377, in <module>
+    main()
+  File "/Users/dmoiseenko/Development/RDX/.venv/lib/python3.12/site-packages/mlx_lm/lora.py", line 369, in main
+    run(types.SimpleNamespace(**args))
+  File "/Users/dmoiseenko/Development/RDX/.venv/lib/python3.12/site-packages/mlx_lm/lora.py", line 341, in run
+    train_model(args, model, train_set, valid_set, training_callback)
+  File "/Users/dmoiseenko/Development/RDX/.venv/lib/python3.12/site-packages/mlx_lm/lora.py", line 295, in train_model
+    train(
+  File "/Users/dmoiseenko/Development/RDX/.venv/lib/python3.12/site-packages/mlx_lm/tuner/trainer.py", line 328, in train
+    mx.eval(state, losses, n_tokens, grad_accum)
+RuntimeError: [METAL] Command buffer execution failed: Insufficient Memory (00000008:kIOGPUCommandBufferCallbackErrorOutOfMemory).

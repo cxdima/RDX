@@ -138,7 +138,26 @@ export interface Status {
     connected: boolean;
     pending: boolean;
     result: null | { ok: boolean; message: string };
-    live: Record<string, unknown>;
+    live: {
+      tempo?: number;
+      track_count?: number;
+      has_content?: boolean;
+      playing?: boolean;
+      tracks?: {
+        name: string;
+        midi: boolean;
+        devices: {
+          name: string;
+          kind: string;
+          plugin: boolean;
+          parameter_count: number;
+          parameters: string[];
+        }[];
+      }[];
+    };
+    /** The live.js build running in Max, and the one this studio expects. */
+    device_version: number | null;
+    device_current: number;
   };
 }
 export interface MixFinding {

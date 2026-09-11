@@ -112,17 +112,22 @@ test("a patch changes what comes out of the speakers, not just the file", async 
     page.getByRole("heading", { name: "Your session" }),
   ).toBeVisible();
 
+  // Reverb and echo are switched off on both. Their tails vary between
+  // renders — a reverb's impulse response is generated asynchronously and may
+  // not be ready inside an offline render — and this test is about the
+  // oscillator, not the space around it.
+  const dry = { reverb: 0, delay: 0, filter_env: 0 };
   const sub = await soloLeadProject(request, "Sub", {
+    ...dry,
     preset: "sub",
     wave: "sine",
     cutoff: 200,
-    filter_env: 0,
   });
   const bright = await soloLeadProject(request, "Bright", {
+    ...dry,
     preset: "saw",
     wave: "saw",
     cutoff: 16000,
-    filter_env: 0,
   });
 
   const quiet = await renderAndMeasure(page, sub, 0.1, 1.5);
@@ -151,6 +156,8 @@ test("a filter envelope really closes over the length of a note", async ({
   ).toBeVisible();
 
   const snapping = await soloLeadProject(request, "Envelope", {
+    reverb: 0,
+    delay: 0,
     preset: "saw",
     wave: "saw",
     cutoff: 900,
