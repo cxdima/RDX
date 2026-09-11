@@ -165,9 +165,10 @@ rendered and identical in playback and export.
 
 ![The mixer, with each channel's ducking source and depth](docs/studio-mixer.png)
 
-**Production moves.** *buildup* (with an optional cut at the end), *drop*,
-*breakdown*, *fade*, *layer*, *pump*, *transition*, *riser* and *double time*.
-Each expands into ordinary edits you can see, inspect and undo as a single step.
+**Eleven production moves.** *buildup* (with an optional cut at the end),
+*drop*, *breakdown*, *fade*, *layer*, *pump*, *transition*, *riser*,
+*double_time*, *stutter* and *structure*. Each expands into ordinary edits you
+can see, inspect and undo as a single step.
 
 **Mix judgement, measured.** *"The mix is muddy"* and *"the kick and bass are
 fighting"* are claims about the finished sound, so RDX measures instead of

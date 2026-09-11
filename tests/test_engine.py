@@ -122,3 +122,110 @@ def test_active_training_adapter_cannot_be_overwritten(tmp_path, monkeypatch):
     (tmp_path/"approved.json").write_text('{}')
     with pytest.raises(RuntimeError,match="protected"):
         training.main()
+
+
+# --- the contract, held against every action added since --------------------
+
+EVERY_KIND = [
+    Action(kind="sound", track="bass", params={"patch": "reese"}),
+    Action(kind="kit_sound", track="drums", params={"machine": "808"}),
+    Action(kind="sidechain", track="bass", params={"shape": "pump"}),
+    Action(kind="phrase", track="lead", section="Main", params={"operation": "space"}),
+    Action(kind="relate", track="bass", section="Main", params={"operation": "follow", "from_track": "chords"}),
+    Action(kind="harmony", track="chords", section="Main", params={"progression": "trance"}),
+    Action(kind="automation", track="lead", section="Main", params={"parameter": "drive", "points": [[0, 0], [8, 0.6]]}),
+    Action(kind="arrange", section="Outro", params={"operation": "copy", "from_section": "Main"}),
+    Action(kind="project", params={"scale": "dorian"}),
+    Action(kind="move", params={"name": "pump"}),
+    Action(kind="move", params={"name": "structure", "structure": "short"}),
+    Action(kind="move", section="Main", params={"name": "stutter"}),
+    Action(kind="move", section="Build", params={"name": "transition"}),
+    Action(kind="move", section="Main", params={"name": "riser"}),
+    Action(kind="move", section="Main", params={"name": "double_time"}),
+]
+
+
+@pytest.mark.parametrize("action", EVERY_KIND, ids=lambda a: f"{a.kind}:{a.params.get('name') or a.params.get('operation') or a.params.get('patch') or a.params.get('machine') or a.params.get('parameter') or a.params.get('progression') or a.params.get('scale') or ''}")
+def test_no_action_mutates_the_project_it_was_given(action):
+    project = starter_project()
+    selection = {"track": next(t for t in project.tracks if t.role == "lead").id, "section": project.sections[2].id}
+    before = project.model_dump_json()
+    apply_actions(project, [action], selection)
+    assert project.model_dump_json() == before, "apply_actions works on a copy or it is not undoable"
+
+
+@pytest.mark.parametrize("action", EVERY_KIND, ids=lambda a: a.kind + (a.params.get("name") or ""))
+def test_a_plan_that_fails_halfway_changes_nothing(action):
+    """The second action is always impossible, so the first must be rolled back."""
+    project = starter_project()
+    selection = {"track": next(t for t in project.tracks if t.role == "lead").id, "section": project.sections[2].id}
+    before = project.model_dump_json()
+    with pytest.raises(ValueError):
+        apply_actions(project, [action, Action(kind="character", track="Nonexistent", params={"character": "warm"})], selection)
+    assert project.model_dump_json() == before
+
+
+@pytest.mark.parametrize("action", EVERY_KIND, ids=lambda a: a.kind + (a.params.get("name") or ""))
+def test_nothing_reaches_a_track_that_was_locked_when_the_edit_began(action):
+    project = starter_project()
+    selection = {"track": next(t for t in project.tracks if t.role == "lead").id, "section": project.sections[2].id}
+    locked = apply_actions(project, [Action(kind="protect", track="all", params={"locked": True})], selection)
+    frozen = {t.id: t.model_dump_json() for t in locked.tracks}
+    try:
+        after = apply_actions(locked, [action], selection)
+    except ValueError:
+        return  # refusing outright is the other correct answer
+    for track in after.tracks:
+        if track.id in frozen:
+            assert track.model_dump_json() == frozen[track.id], f"{action.kind} touched a protected track"
+
+
+@pytest.mark.parametrize("action", EVERY_KIND, ids=lambda a: a.kind + (a.params.get("name") or ""))
+def test_every_result_is_a_project_that_can_be_stored_and_read_back(action):
+    project = starter_project()
+    selection = {"track": next(t for t in project.tracks if t.role == "lead").id, "section": project.sections[2].id}
+    after = apply_actions(project, [action], selection)
+    assert type(project).model_validate_json(after.model_dump_json()) == after
+
+
+def test_long_chains_of_edits_never_produce_an_invalid_project():
+    """Eight random edits, forty times over, from a fixed seed.
+
+    Each action is tested on its own elsewhere. This is for what happens when
+    they meet: a structure added after a section was shrunk, ducking on a track
+    that was later duplicated, a mode change under a progression.
+    """
+    import random
+
+    candidates = [
+        ("sound", {"patch": "acid"}, "bass", None),
+        ("kit_sound", {"machine": "909"}, "drums", None),
+        ("sidechain", {"shape": "extreme"}, "bass", None),
+        ("character", {"character": "wobbling", "intensity": 1.0}, "bass", None),
+        ("phrase", {"operation": "fill", "amount": 1.0}, "lead", "Main"),
+        ("relate", {"operation": "counter", "from_track": "drums"}, "lead", "Main"),
+        ("harmony", {"progression": "andalusian", "colour": "ninth"}, "chords", "Main"),
+        ("automation", {"parameter": "width", "points": [[0, 0], [8, 1]]}, "lead", "Main"),
+        ("arrange", {"operation": "copy", "from_section": "Main"}, None, "Outro"),
+        ("arrange", {"operation": "update", "bars": 2}, None, "Main"),
+        ("project", {"scale": "phrygian"}, None, None),
+        ("move", {"name": "buildup", "cut_bars": 1}, None, "Build"),
+        ("move", {"name": "pump"}, None, None),
+        ("move", {"name": "stutter", "beats": 2}, None, "Main"),
+        ("move", {"name": "double_time"}, None, "Main"),
+        ("move", {"name": "transition"}, None, "Build"),
+        ("move", {"name": "layer", "track": "lead", "preset": "bell"}, None, None),
+        ("duplicate_track", {}, "lead", None),
+        ("transpose", {"semitones": -12}, "lead", "Main"),
+    ]
+    for seed in range(40):
+        rng = random.Random(seed)
+        project = starter_project()
+        selection = {"track": next(t for t in project.tracks if t.role == "lead").id, "section": project.sections[2].id}
+        for _ in range(8):
+            kind, params, track, section = rng.choice(candidates)
+            try:
+                project = apply_actions(project, [Action(kind=kind, track=track, section=section, params=dict(params))], selection)
+            except ValueError:
+                continue  # a refusal in plain language is a correct outcome
+            type(project).model_validate(project.model_dump())
