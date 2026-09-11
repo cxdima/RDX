@@ -20,6 +20,8 @@ Most music tools want parameter names. RDX wants sentences.
 > *"The bass should follow the chords."*
 > *"There are too many notes in the melody — give it room to breathe."*
 > *"Build this section up and let everything suddenly fade at the end."*
+> *"Give me a reese bass."*
+> *"Tune the kick down and let it ring longer."*
 > *"Turn the humming I recorded into a chord progression on the strings."*
 
 It plays the result back immediately, in a browser, and exports MIDI, WAV or a
@@ -106,17 +108,33 @@ plays in the gaps the kick leaves; a harmony line sits a third above in the key.
 Every generator used to work from the key alone, which is why none of these
 had an answer before.
 
-**Sound design.** Eleven synthesized instruments — supersaw, saw, pluck, sine,
-sub, pad, strings, choir, bell, FM, and a noise source for risers. Filter,
-resonance, envelope, three-band EQ, drive, echo and reverb, plus a motion
-section: chorus, flanger, phaser, auto-pan, stereo width and glide.
+**Sound design.** A synth you can actually design on, not just choose from: a
+full ADSR, a filter envelope, unison and detune, a sub oscillator, an octave, a
+waveform override, bit crush, and a dedicated LFO you can point at the cutoff,
+the pitch or the level. Eleven instrument presets on top — supersaw, saw, pluck,
+sine, sub, pad, strings, choir, bell, FM and a noise source for risers — each
+carrying its own envelope, because a pluck is a pluck by how fast it decays
+rather than by its waveform.
 
-**28 musical adjectives.** *warm, bright, dark, soft, hard, punchy, thin, fat,
+**Sixteen sounds by name.** *reese, acid, hoover, donk, wobble, sub bass, pluck
+stab, supersaw lead, warm pad, glass pad, bell lead, organ, gritty bass, vibrato
+lead, tremolo keys, riser noise.* Naming a sound is a different request from
+describing a change, so each is a complete recipe in
+[`design.py`](rdx/musical/design.py) you can read and disagree with — and a
+patch on the wrong kind of track is refused with the reason.
+
+**Drum voices, not just drum patterns.** Kick tuning, decay and click; snare
+tone and decay; clap width; hat tone and decay. Five machines — *909, 808, hard,
+deep, acoustic* — as tunings rather than patterns, because a 909 pattern with an
+808 kick is a real thing to want and neither choice implies the other.
+
+**39 musical adjectives.** *warm, bright, dark, soft, hard, punchy, thin, fat,
 wide, narrow, dry, wet, dreamy, lush, gritty, clean, sharp, smooth, huge, tight,
-loose, airy, clear, moving, still, swirling, metallic, goosebumps* — each one a
-readable entry in [`character.py`](rdx/musical/character.py) that blends by
-intensity, so *"a little warmer"* and *"much warmer"* are the same word at
-different strengths.
+loose, airy, clear, moving, still, swirling, metallic, goosebumps, plucky,
+sustained, acidic, snappy, stacked, single, deep, crushed, wobbling, singing,
+pulsing* — each one a readable entry in
+[`character.py`](rdx/musical/character.py) that blends by intensity, so *"a
+little warmer"* and *"much warmer"* are the same word at different strengths.
 
 **Drums, one layer at a time.** Kick, rim, snare, clap, closed/pedal/open hats,
 three toms, crash and ride. Because a kit is composed rather than chosen from
