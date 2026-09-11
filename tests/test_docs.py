@@ -86,6 +86,7 @@ def test_the_readme_does_not_overstate_the_ableton_bridge():
     that, and it should only ever change deliberately — which is why the count
     and the caveat are pinned here.
     """
-    assert re.search(r"has been watched working \*\*once\*\*|watched working once", README)
-    assert re.search(r"one\s+confirmed run on one machine, not a guarantee", README)
+    assert re.search(r"watched working on 10 September 2026", README)
+    assert re.search(r"a handful of runs on one machine, not a guarantee", README)
     assert re.search(r"Automation does not cross into Live", README)
+    assert re.search(r"Nothing dials those instruments yet", README)

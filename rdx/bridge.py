@@ -9,7 +9,7 @@ from .domain import Project, uid
 # The build of bridge/live.js this studio expects. Max does not reliably reload
 # that file, so a device can be connected and running an older script; when
 # these disagree the device needs dragging out of Live and back in.
-DEVICE_VERSION = 2
+DEVICE_VERSION = 3
 
 
 class Bridge:

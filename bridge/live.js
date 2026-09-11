@@ -7,7 +7,7 @@ outlets = 2;
 // in the background it does not fire at all — and a stale script that looks
 // connected is the hardest kind of failure to see. Bump this whenever the
 // behaviour changes, and the studio will say when the device needs reloading.
-var DEVICE_VERSION = 2;
+var DEVICE_VERSION = 3;
 
 var busy = false;
 var completed = {};
@@ -48,8 +48,17 @@ function devices() {
             // twelve seconds.
             var parameterIds = ids(device.get('parameters'));
             var parameters = [];
-            for (var q = 0; q < parameterIds.length && q < 48; q++) {
-                parameters.push(text(api('id ' + parameterIds[q]), 'name'));
+            for (var q = 0; q < parameterIds.length && q < 64; q++) {
+                var parameter = api('id ' + parameterIds[q]);
+                // The range matters as much as the name: a value cannot be set
+                // correctly without knowing what scale Live keeps it on, and
+                // that is not guessable from the name alone.
+                parameters.push({
+                    name: text(parameter, 'name'),
+                    min: number(parameter, 'min'),
+                    max: number(parameter, 'max'),
+                    value: number(parameter, 'value')
+                });
             }
             listed.push({
                 name: text(device, 'name'),

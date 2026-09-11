@@ -57,7 +57,7 @@ def a_set(tracks: list[dict], tempo: float = 124.0) -> dict:
     for track in tracks:
         devices = []
         for device in track.get("devices", []):
-            parameters = [{"id": next_id(), "name": name} for name in device.get("parameters", [])]
+            parameters = [{"id": next_id(), "name": name, "min": 0.0, "max": 1.0, "value": 0.5} for name in device.get("parameters", [])]
             devices.append({"id": next_id(), "name": device["name"], "class_name": device.get("class_name", "InstrumentVector"), "class_display_name": device.get("kind", device["name"]), "parameters": [p["id"] for p in parameters], "parameter_objects": parameters})
         track_objects.append({
             "id": next_id(),
@@ -156,8 +156,9 @@ def test_device_parameters_are_discovered_by_name(tmp_path):
         {"name": "Wavetable", "kind": "Wavetable", "parameters": ["Device On", "Filter 1 Freq", "Osc 1 Transpose"]},
     ]}]), tmp_path)["state"]
     device = state["tracks"][0]["devices"][0]
-    assert device["parameters"] == ["Device On", "Filter 1 Freq", "Osc 1 Transpose"]
+    assert [p["name"] for p in device["parameters"]] == ["Device On", "Filter 1 Freq", "Osc 1 Transpose"]
     assert device["parameter_count"] == 3
+    assert device["parameters"][0]["min"] == 0 and device["parameters"][0]["max"] == 1
 
 
 def test_a_device_with_many_parameters_does_not_bloat_the_poll(tmp_path):
@@ -165,4 +166,4 @@ def test_a_device_with_many_parameters_does_not_bloat_the_poll(tmp_path):
     state = run(a_set([{"name": "Big", "midi": True, "devices": [{"name": "Wavetable", "parameters": many}]}]), tmp_path)["state"]
     device = state["tracks"][0]["devices"][0]
     assert device["parameter_count"] == 200, "the real count is still reported"
-    assert len(device["parameters"]) == 48, "but the names are capped"
+    assert len(device["parameters"]) == 64, "but the names are capped"

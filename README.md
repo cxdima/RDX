@@ -256,18 +256,19 @@ never overwritten. Do not run training and inference at the same time on 16 GB.
 
 Kept here deliberately, because a capability list without one is marketing.
 
-- **The Ableton bridge works, and has been watched working once.** On 10
-  September 2026 the Max for Live device connected from Live 12.4.5, read the
-  Set's real tempo and track count through the Live API, and completed a
-  transfer: eight tracks at bar 89, four rendered audio stems and four MIDI
-  tracks, every note confirmed by reading it back out of Live. That is one
-  confirmed run on one machine, not a guarantee — treat it as working rather
-  than as proven, and watch the first transfer into a Set you care about.
-- **What the bridge still cannot do.** Automation does not cross into Live: the
-  Clip API can clear an envelope and not write one, so RDX's curves are baked
-  into the audio stems. Live 12.3+ adds `Track.insert_device`, so native Live
-  devices are reachable in principle, but nothing maps RDX's sounds onto them
-  yet; plugins cannot be inserted at all.
+- **The Ableton bridge works, watched working on 10 September 2026.** The Max
+  for Live device connects from Live 12.4.5, reads the open Set — every track,
+  whether it is MIDI or audio, what devices are on it and what their parameters
+  are called — and completes a transfer: rendered audio stems alongside editable
+  MIDI tracks, with a native Live instrument inserted on each one (Wavetable for
+  melodic parts, a Drum Rack for drums) and every note confirmed by reading it
+  back out of Live. That is a handful of runs on one machine, not a guarantee.
+- **What the bridge still cannot do.** Nothing dials those instruments yet: the
+  MIDI tracks carry a Wavetable at its default settings, and the sound you
+  designed is in the audio stem beside it. Automation does not cross into Live
+  at all — the Clip API can clear an envelope and not write one — so RDX's
+  curves are baked into the stems. Plugins cannot be inserted, only driven once
+  you have loaded them yourself, which is what reading the Set is for.
 - **No plugin hosting.** RDX plays its own synthesized instruments. They are
   good, but they are synthesized — the strings are a detuned ensemble with
   vibrato, not an orchestra.
