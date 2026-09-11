@@ -212,12 +212,14 @@ class Master(Model):
     # make a finished record quieter than it already was, and every rendered
     # record measured about -34 LUFS — roughly 20 dB below a normal one.
     #
-    # +10 is where a rendered drop lands at -14 to -15 LUFS with the peak held
-    # at -1.1 dBFS by the soft clip after the limiter, nothing over the ceiling
-    # and 10-11 dB of crest left; a whole record integrates around -17. Set by
-    # measurement on the two extremes, trance and psytrance, after the sub was
-    # brought in line — before that, +9 clipped 13,614 samples.
-    volume_db: float = Field(default=10, ge=-30, le=12)
+    # +8 is where a rendered drop lands at -13 to -14 LUFS with the peak held at
+    # -1 dBFS by the soft clip after the limiter, nothing over the ceiling and
+    # 9-10 dB of crest left; a whole record integrates around -16. Measured on
+    # the two extremes, trance and psytrance, with the reverb as a send and the
+    # compressor's slow attack in place — both let more through to the limiter,
+    # which is why +10 had been right before them and squashed psytrance to a
+    # 7.4 dB crest after.
+    volume_db: float = Field(default=8, ge=-30, le=12)
     ceiling: float = Field(default=-1, ge=-12, le=0)
     compression: float = Field(default=-18, ge=-60, le=0)
 

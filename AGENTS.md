@@ -92,6 +92,12 @@ guide, and these rules are taken from it directly:
 - **Tease the main melody** before stating it.
 - **Every kick has a top and a bottom**: transients that cut through, and low end
   that anchors. `Kit` carries both as `kick_click` and `kick_tune`/`kick_decay`.
+- **Reverb is essential to trance and clogs a mix without EQ.** The reverb is a
+  send, high-passed at 300 Hz, so a low pad or bass never reverberates into the
+  band the kick needs clear. The dry signal is never touched.
+- **Processing takes away transients and deadens impact.** The master
+  compressor's attack is slow enough to let a kick's transient through before
+  it clamps; Tone's default of 3 ms clamped it.
 
 Cite the source in the test when a claim has one. A rule someone can look up is
 worth more than a rule that was merely plausible when it was written.

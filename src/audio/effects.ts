@@ -191,10 +191,21 @@ export function createChain(
   }
 
   let reverbParam: Automatable | undefined;
+  let reverbSend: Tone.Gain | undefined;
   if (used("reverb")) {
-    const reverb = keep(new Tone.Reverb({ decay: 1.6, wet: sound.reverb }));
-    reverbParam = reverb.wet;
-    stages.push(reverb);
+    // A send, not an insert, and high-passed before the reverb. Reverb is
+    // essential to trance and it clogs a mix without EQ — a producer's
+    // words — because a reverb tail on a bass or a low pad smears the very
+    // band the kick needs clear. The dry signal passes untouched; only the
+    // part above 300 Hz reverberates, and the send level is what automation
+    // and the reverb control drive.
+    reverbSend = keep(new Tone.Gain(sound.reverb));
+    const above = keep(
+      new Tone.Filter({ type: "highpass", frequency: 300, Q: 0.7 }),
+    );
+    const reverb = keep(new Tone.Reverb({ decay: 1.6, wet: 1 }));
+    reverbSend.chain(above, reverb, destination);
+    reverbParam = reverbSend.gain;
   }
 
   // Sweeping the filter itself, around the cutoff rather than from zero, so a
@@ -216,6 +227,9 @@ export function createChain(
   }
 
   filter.chain(...stages, destination);
+  // The reverb send taps the end of the chain, so chorus and echo go into the
+  // room too, and sums back into the same destination beside the dry path.
+  if (reverbSend) (stages[stages.length - 1] ?? filter).connect(reverbSend);
   return {
     input: filter,
     params: {

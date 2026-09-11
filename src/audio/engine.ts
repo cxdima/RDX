@@ -94,7 +94,18 @@ export class StudioAudio {
     const ratio = 2;
     const makeup = Math.abs(project.master.compression) * (1 - 1 / ratio);
     const output = new Tone.Volume(project.master.volume_db);
-    const compressor = new Tone.Compressor(project.master.compression, ratio);
+    // A slow attack, so a kick's transient is through before the compressor
+    // clamps — Tone's 3 ms default clamped it, which is the "processing takes
+    // away transients and deadens impact" the mastering advice warns about.
+    // The release is a beat or so at club tempo, so it breathes with the kick
+    // rather than pumping against it.
+    const compressor = new Tone.Compressor({
+      threshold: project.master.compression,
+      ratio,
+      attack: 0.02,
+      release: 0.2,
+      knee: 12,
+    });
     const recovered = new Tone.Volume(makeup);
     const limiter = new Tone.Limiter(project.master.ceiling);
     // Tone's limiter is a fast compressor, not a brickwall: on sub-heavy
@@ -109,7 +120,14 @@ export class StudioAudio {
     );
     safety.oversample = "4x";
     const meter = new Tone.Meter({ smoothing: 0.7 });
-    output.chain(compressor, recovered, limiter, safety, meter, Tone.getDestination());
+    output.chain(
+      compressor,
+      recovered,
+      limiter,
+      safety,
+      meter,
+      Tone.getDestination(),
+    );
     this.nodes.push(recovered, safety);
     this.master = output;
     this.outputMeter = meter;

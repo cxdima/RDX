@@ -311,3 +311,35 @@ test("unison really thickens a sound rather than just being stored", async ({
   expect(seven.wander).toBeGreaterThan(one.wander * 2);
   expect(errors).toEqual([]);
 });
+
+test("reverb does not smear the low end", async ({ page, request }) => {
+  test.setTimeout(120_000);
+  await page.goto("/");
+  await expect(
+    page.getByRole("heading", { name: "Your session" }),
+  ).toBeVisible();
+
+  // "Reverb is essential to trance ... but it can clog your mix without proper
+  // EQing" — a professional producer. So the reverb is a send high-passed at 300 Hz.
+  // A low sine, A1 at 55 Hz, drenched in reverb: once the note releases, the
+  // dry signal is gone and only the wet tail remains. High-passed, that tail
+  // has almost nothing in it; an unfiltered one would ring on at full weight.
+  const drenched = await soloLeadProject(request, "Low reverb", {
+    preset: "sine",
+    wave: "sine",
+    cutoff: 12000,
+    reverb: 0.9,
+    delay: 0,
+    filter_env: 0,
+    octave: -2,
+    release: 0.05,
+  });
+  // The note in soloLeadProject is A3 (57) for 3.5 beats at 120 BPM: 1.75 s.
+  // octave -2 puts it at A1. Measure the sustained note, then the tail after
+  // it has released.
+  const sustained = await renderAndMeasure(page, drenched, 0.5, 1.5);
+  const tail = await renderAndMeasure(page, drenched, 2.1, 2.6);
+  expect(sustained.level).toBeGreaterThan(0.01);
+  // A 55 Hz tail through a 300 Hz high-pass is at least 20 dB down.
+  expect(tail.level).toBeLessThan(sustained.level * 0.1);
+});

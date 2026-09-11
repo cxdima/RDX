@@ -183,7 +183,7 @@ test("a finished record is loud enough to be a record, and does not clip", async
   // uses the real defaults from rdx/domain.py.
   const loud = {
     ...project(),
-    master: { volume_db: 10, ceiling: -1, compression: -18 },
+    master: { volume_db: 8, ceiling: -1, compression: -18 },
   };
   const measured = await page.evaluate(async (source) => {
     const blob = await window.rdx.audio.render(source as never);
