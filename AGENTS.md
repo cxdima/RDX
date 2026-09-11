@@ -116,12 +116,13 @@ RDX_ADAPTER=data/models/rdx-v2 .venv/bin/python -m rdx.promote
 3. **Model output is data, never code.** It is parsed as JSON, validated against
    `Action`, and executed by the engine. Never `eval`, shell out, or let it
    choose a file path.
-4. **Never claim the Ableton bridge is verified.** `scripts/bridge_selftest.py`
-   proves the studio's half works by pretending to be the device — token auth,
-   polling and state tracking all pass. That narrows a failure to inside Max;
-   it does not verify the bridge. A real Live API handshake and
-   transfer has not been confirmed. It stays labelled experimental until someone
-   watches it work in Live. Live is **12.4.5** — `Track.insert_device` exists
+4. **The bridge reads Live; it has never written to it. Keep those apart.**
+   The handshake was confirmed on 10 September 2026: the device connected from
+   Live 12.4.5, polled every 1.5 seconds, and reported the Set's real tempo,
+   track count and playing state. `scripts/bridge_selftest.py` proves the
+   studio's half independently, so a failure can be narrowed to one side.
+   **The transfer — creating tracks, clips and notes in Live — has still never
+   been watched working,** and stays labelled experimental until it is. Live is **12.4.5** — `Track.insert_device` exists
    (12.3+, native devices only) but writing automation envelopes still does not.
    Recheck the LOM reference before relying on any Live API, and never assume a
    function exists because it would be convenient.

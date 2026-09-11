@@ -78,6 +78,11 @@ def test_every_instrument_is_named_in_the_readme(preset):
     assert re.search(rf"\b{spelled}\b", README, re.I), f"{preset} is playable but undocumented"
 
 
-def test_the_readme_does_not_claim_the_ableton_bridge_works():
-    """The one sentence in this project that must never soften."""
-    assert re.search(r"A real\s+Live API handshake and transfer have \*\*never\*\* been confirmed", README, re.S)
+def test_the_readme_does_not_claim_the_ableton_transfer_works():
+    """The one claim in this project that must never soften by accident.
+
+    The handshake was confirmed on 10 September 2026 and the README says so.
+    The transfer has not been, and this fails if that sentence ever loses its
+    "never" — which is the only way it should be allowed to change.
+    """
+    assert re.search(r"the\s+transfer\s+—\s+has \*\*never\*\* been confirmed", README, re.S)

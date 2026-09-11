@@ -256,12 +256,14 @@ never overwritten. Do not run training and inference at the same time on 16 GB.
 
 Kept here deliberately, because a capability list without one is marketing.
 
-- **The Ableton bridge is unverified.** The Max for Live device builds and
-  packages correctly against Live 12.4.5, and it has been opened in Live. A real
-  Live API handshake and transfer have **never** been confirmed. Treat it as
-  experimental. Live 12.3+ adds `Track.insert_device`, so native Live devices
-  are reachable in principle; plugins are not, and writing automation envelopes
-  into Live is still absent from the documented API.
+- **The Ableton bridge reads Live, but has never written to it.** On 10
+  September 2026 the Max for Live device connected to the studio from Live
+  12.4.5 and stayed connected, reading the Set's real tempo, track count and
+  playing state through the Live API. Creating tracks, clips and notes — the
+  transfer — has **never** been confirmed, so treat that half as experimental.
+  Live 12.3+ adds `Track.insert_device`, so native Live devices are reachable in
+  principle; plugins are not, and writing automation envelopes into Live is
+  still absent from the documented API.
 - **No plugin hosting.** RDX plays its own synthesized instruments. They are
   good, but they are synthesized — the strings are a detuned ensemble with
   vibrato, not an orchestra.
