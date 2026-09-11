@@ -208,6 +208,12 @@ measured.**
 
 ![Mix analysis: loudness, dynamic range, band balance and what to do about it](docs/studio-mix-analysis.png)
 
+**A master that reaches its ceiling.** Compression with makeup, then a limiter,
+so a rendered record lands around −14 to −17 LUFS with nothing clipped — a
+normal record's level. The balance underneath was measured part by part on a
+rendered drop and set so the tune sits about 6 dB under the kick, which is
+where a trance mix has it.
+
 **Arrangement and mixing.** Sections you can add, duplicate, resize and reorder;
 track duplication, naming and protection; a mixer with real meters; master
 compression and limiting; automation for filter, resonance, level, pan, reverb,

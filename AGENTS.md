@@ -107,6 +107,8 @@ npm run check                               # tsc --noEmit
 npm test                                    # pytest
 npm run test:browser                        # playwright
 npm run render                              # whole records to WAV, to listen to
+npm run render:drop                         # one drop in ~1 min: RDX_GENRE, RDX_SOLO=lead, RDX_MASTER=9
+npm run measure artifacts/drop/drop.wav     # LUFS, peak, clipping, band shares, RDX's own verdicts
 npm run format                              # prettier
 
 .venv/bin/python scripts/build_training_data.py
@@ -225,7 +227,10 @@ against a copy; the project only changes when the user accepts via
   project correct and the record silent — see the automation-scope bug in
   `RDX_HANDOFF.md`. **A musical change is not verified until something has
   listened to it**; `npm run render` writes whole records to
-  `artifacts/renders/` for exactly that.
+  `artifacts/renders/` for exactly that, and `npm run render:drop` plus
+  `npm run measure` is the one-minute loop the master chain and the mix balance
+  were tuned in — each part alone, then together, judged by the thresholds in
+  `rdx/musical/mixdown.py` rather than by eye.
 - New musical capability needs an engine test proving the *musical* result, not
   just that the call returned. A drum pattern test should assert the notes land
   where a producer expects them.

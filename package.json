@@ -10,6 +10,8 @@
     "check": "tsc --noEmit",
     "test": ".venv/bin/python -m pytest -q",
     "render": "mkdir -p artifacts/renders && RENDER_DIR=$PWD/artifacts/renders playwright test --config=scripts/render/records.config.ts --reporter=line",
+    "render:drop": "rm -rf artifacts/drop-data && mkdir -p artifacts/drop && RENDER_DIR=$PWD/artifacts/drop playwright test --config=scripts/render/drop.config.ts --reporter=line",
+    "measure": ".venv/bin/python scripts/render/measure.py",
     "test:browser": "playwright test",
     "format": "prettier --write src bridge/connection.js scripts/*.mjs tests/browser playwright.config.ts vite.config.ts"
   },

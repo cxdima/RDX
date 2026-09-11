@@ -19,9 +19,16 @@ const GENRES = (process.env.RDX_GENRES || "trance,psytrance").split(",");
 
 for (const genre of GENRES) {
   test(`render a ${genre} record`, async ({ page }) => {
-    const list = await (await page.request.get("/api/projects")).json();
-    const id = (list.projects ?? list)[0].id;
-    let project = await (await page.request.get(`/api/projects/${id}`)).json();
+    // A project of this run's own. Opening whichever project was edited last
+    // inherits every flag a previous run left on it — one run inherited a solo
+    // and rendered three silent tracks that read like a regression in the engine.
+    const created = await (
+      await page.request.post("/api/projects", {
+        data: { name: `render ${genre}`, starter: true },
+      })
+    ).json();
+    const id = created.id;
+    let project = created;
     project = await (
       await page.request.post(`/api/projects/${id}/edits`, {
         data: {
