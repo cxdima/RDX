@@ -25,17 +25,16 @@ import math
 import random
 from dataclasses import dataclass
 
-from ..domain import Note
+from ..domain import PITCH_CLASSES, SCALE_STEPS, Note
 
-MAJOR = (0, 2, 4, 5, 7, 9, 11)
-MINOR = (0, 2, 3, 5, 7, 8, 10)
-PITCH_CLASSES = ("C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B")
+MAJOR = SCALE_STEPS["major"]
+MINOR = SCALE_STEPS["minor"]
 
 SHAPES = ("rise", "fall", "arch", "valley", "flat")
 
 
 def steps(scale: str) -> tuple[int, ...]:
-    return MINOR if scale == "minor" else MAJOR
+    return SCALE_STEPS[scale]
 
 
 def scale_pitches(key: str, scale: str, low: int = 0, high: int = 127) -> list[int]:

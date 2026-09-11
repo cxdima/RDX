@@ -485,6 +485,30 @@ def intents() -> list[Intent]:
         ), refuse("I have not measured this mix yet. Analyse it in the mixer and I will tell you what is actually in it.")),
     ]
 
+    items += [
+        Intent("mode_dorian", (
+            "put this in dorian",
+            "make it dorian",
+            "I want that brighter minor sound, raise the sixth",
+            "switch the scale to dorian",
+        ), lambda scene, rng: ([act("project", {"scale": "dorian"})], "")),
+        Intent("mode_phrygian", (
+            "make it phrygian",
+            "I want that darker spanish sound",
+            "flatten the second, put it in phrygian",
+        ), lambda scene, rng: ([act("project", {"scale": "phrygian"})], "")),
+        Intent("mode_major", (
+            "make this major instead",
+            "it's too sad, put it in major",
+            "switch to a major key",
+        ), lambda scene, rng: ([act("project", {"scale": "major"})], "")),
+        Intent("key_change", (
+            "put this in {key}",
+            "change the key to {key}",
+            "transpose the whole thing to {key}",
+        ), lambda scene, rng: ([act("project", {"key": scene.key})], "")),
+    ]
+
     # Chords and arrangements asked for by name rather than hummed.
     items += [
         Intent("progression_named", (

@@ -92,6 +92,22 @@ density and variation controls. Hum a line into the microphone and RDX works
 out whether you gave it chord roots or a melody, infers the progression, and
 voices it with smooth voice leading. Tap a rhythm and it becomes a drum part.
 
+**Six scales, not two.** Major, minor, Dorian, Phrygian, Lydian and
+Mixolydian — because house and techno live in Dorian and Phrygian as much as
+this music lives in natural minor. Changing mode keeps every note on its own
+scale degree, so the melody stays the melody and only its colour changes.
+
+**Chord progressions by name or by numeral.** *trance, andalusian, epic, pop,
+melancholy, driving, suspense, lift, classic* — or `i-VI-III-VII`, or `1 6 3 7`.
+Stored as scale degrees, so they transpose to any key for free. When a
+progression lands on a diminished chord in the mode you are in, RDX says so
+rather than letting an unstable chord arrive unannounced.
+
+**Whole arrangements.** Four shapes — *club, short, radio, anthem* — laid out
+as named sections with the energies each one needs. Sections are appended, never
+replaced: a move that silently deleted an arrangement would be the most
+destructive thing in the vocabulary.
+
 **Harmony with colour.** Sevenths, ninths, sixths, add9 and suspensions, all
 derived from the key rather than looked up: in A minor the VII is G7 and the
 III is Cmaj7, both major triads with different sevenths. Where a suspension
@@ -253,8 +269,8 @@ Kept here deliberately, because a capability list without one is marketing.
 - Mix analysis measures the audio, but taste is not in it. It can tell you 31%
   of the energy is in the low mids; it cannot tell you whether that is right for
   the record you are making.
-- 4/4 only. Up to 24 tracks, 16 sections, 256 bars, one clip per track and
-  section. Hum and rhythm analysis is capped at 30 seconds; imports at five
+- 4/4 only, and one tempo throughout. Up to 24 tracks, 16 sections, 256 bars,
+  one clip per track and section. Hum and rhythm analysis is capped at 30 seconds; imports at five
   minutes.
 - WAV rendering is in-memory, so long arrangements need more memory.
 

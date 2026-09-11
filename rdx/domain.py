@@ -50,6 +50,22 @@ DRUM_MAP = {36: "Kick", 37: "Rim", 38: "Snare", 39: "Clap", 42: "Hat", 44: "Peda
 AUTOMATION_RANGES = {"cutoff": (60, 20000), "resonance": (0.1, 15), "volume_db": (-60, 6), "pan": (-1, 1), "reverb": (0, 1), "flanger": (0, 1), "chorus": (0, 1)}
 
 
+# The scales RDX writes in, as semitones above the root. Modes are not an
+# ornament here: house and techno live in Dorian and Phrygian as much as this
+# music lives in natural minor, and a generator that only knows two scales
+# cannot write in them however good its rhythm is.
+SCALE_STEPS: dict[str, tuple[int, ...]] = {
+    "major": (0, 2, 4, 5, 7, 9, 11),
+    "minor": (0, 2, 3, 5, 7, 8, 10),
+    "dorian": (0, 2, 3, 5, 7, 9, 10),  # minor with a raised sixth
+    "phrygian": (0, 1, 3, 5, 7, 8, 10),  # minor with a flattened second
+    "lydian": (0, 2, 4, 6, 7, 9, 11),  # major with a raised fourth
+    "mixolydian": (0, 2, 4, 5, 7, 9, 10),  # major with a flattened seventh
+}
+SCALES = tuple(SCALE_STEPS)
+
+PITCH_CLASSES = ("C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B")
+
 WAVES = ("preset", "saw", "square", "triangle", "sine", "pulse")
 LFO_TARGETS = ("off", "cutoff", "pitch", "volume")
 
@@ -197,8 +213,8 @@ class Project(Model):
     name: str = Field(default="Untitled 01", min_length=1, max_length=100)
     revision: int = 0
     tempo: float = Field(default=124, ge=40, le=240)
-    key: Literal["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"] = "A"
-    scale: Literal["minor", "major"] = "minor"
+    key: Literal[PITCH_CLASSES] = "A"  # type: ignore[valid-type]
+    scale: Literal[SCALES] = "minor"  # type: ignore[valid-type]
     seed: int = 42
     sections: list[Section] = Field(default_factory=list, max_length=16)
     tracks: list[Track] = Field(default_factory=list, max_length=24)

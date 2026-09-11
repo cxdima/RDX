@@ -83,6 +83,7 @@ def fill(phrasing: str, scene: Scene) -> str:
         phrasing.replace("{track}", scene.name(scene.selected_role))
         .replace("{role}", scene.selected_role)
         .replace("{tempo}", str(scene.tempo))
+        .replace("{key}", f"{scene.key} {scene.scale}")
     )
 
 

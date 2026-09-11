@@ -43,7 +43,7 @@ automation (track, section) — params parameter (cutoff, resonance, volume_db, 
 mix (track) — params volume_db, delta_db, pan, mute, solo.
 mix_fix — params problem. Use this when the user complains about the finished sound rather than one part: muddy, boomy, thin, harsh, dull, masking, squashed, buried, loud. Only offer it when "mix_measured" appears in the context and lists that problem; otherwise say the mix has to be analysed first. Leave problem out to correct everything measured.
 arrange (section) — params operation (add, duplicate, remove, move, update), name, bars, energy, index.
-project — params name, tempo, key, scale.  master — params volume_db, ceiling, compression.
+project — params name, tempo, key, scale (minor, major, dorian, phrygian, lydian, mixolydian).  master — params volume_db, ceiling, compression.
 add_track — params role, name, preset.  duplicate_track, remove_track, protect (locked) — track.
 
 Change only what was asked. A request for a whole section may combine several actions."""

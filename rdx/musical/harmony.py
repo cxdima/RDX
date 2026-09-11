@@ -12,11 +12,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from ..domain import Note
+from ..domain import PITCH_CLASSES, SCALE_STEPS, Note
 
-MAJOR = (0, 2, 4, 5, 7, 9, 11)
-MINOR = (0, 2, 3, 5, 7, 8, 10)
-PITCH_CLASSES = ("C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B")
+MAJOR = SCALE_STEPS["major"]
+MINOR = SCALE_STEPS["minor"]
 ROMAN = ("I", "II", "III", "IV", "V", "VI", "VII")
 
 # Chord tones above the root, by quality. The triads are the shapes a
@@ -96,7 +95,7 @@ def suspension(degree: int, scale: str, kind: str) -> str | None:
 
 
 def steps_of(scale: str) -> tuple[int, ...]:
-    return MINOR if scale == "minor" else MAJOR
+    return SCALE_STEPS[scale]
 
 SUFFIXES = {
     "major": "", "minor": "m", "diminished": "dim", "sus2": "sus2", "sus4": "sus4",
@@ -167,7 +166,7 @@ def key_pc(key: str) -> int:
 
 def diatonic(key: str, scale: str) -> list[Chord]:
     """The seven triads of the key, plus the major V that minor keys borrow."""
-    steps = MINOR if scale == "minor" else MAJOR
+    steps = steps_of(scale)
     root = key_pc(key)
     chords = []
     for degree in range(7):
@@ -175,10 +174,16 @@ def diatonic(key: str, scale: str) -> list[Chord]:
         third, fifth = pcs[1] - pcs[0], pcs[2] - pcs[0]
         quality = "major" if (third, fifth) == (4, 7) else "minor" if (third, fifth) == (3, 7) else "diminished"
         chords.append(Chord(degree, (root + steps[degree]) % 12, quality))
-    if scale == "minor":
-        # Harmonic-minor V: the dominant trance leans on going into the tonic.
+    if quality_of(chords[4]) == "minor":
+        # The harmonic-minor V that this music leans on going into the tonic.
+        # Offered for any mode whose fifth degree is minor, which is what makes
+        # the cadence want it in the first place.
         chords.append(Chord(4, (root + steps[4]) % 12, "major"))
     return chords
+
+
+def quality_of(chord: Chord) -> str:
+    return chord.quality
 
 
 def notes_per_bar(notes: list[Note], bars: int) -> float:

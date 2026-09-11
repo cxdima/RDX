@@ -3,9 +3,7 @@ from __future__ import annotations
 import random
 import math
 
-from music21 import pitch, scale
-
-from .domain import Action, Automation, Clip, Kit, Master, MELODIC_PRESETS, Note, PRESET_DEFAULTS, Project, Section, Sidechain, Sound, Track, new_track, uid
+from .domain import Action, Automation, Clip, Kit, Master, MELODIC_PRESETS, Note, PITCH_CLASSES, PRESET_DEFAULTS, SCALE_STEPS, Project, Section, Sidechain, Sound, Track, new_track, uid
 from .musical import character as character_module
 from .musical import design as design_module
 from .musical import drums as drums_module
@@ -150,9 +148,8 @@ def generate_notes(project: Project, track: Track, section: Section, *, density:
     if type(variation) is not int:
         raise EditError("Variation must be an integer")
     rng = random.Random(f"{project.seed}:{track.role}:{variation}")
-    musical_scale = (scale.MinorScale if project.scale == "minor" else scale.MajorScale)(project.key)
-    pcs = [p.pitchClass for p in musical_scale.getPitches(f"{project.key}3", f"{project.key}4")][:7]
-    root = pitch.Pitch(project.key).pitchClass
+    root = PITCH_CLASSES.index(project.key)
+    pcs = [(root + step) % 12 for step in SCALE_STEPS[project.scale]]
     notes = []
 
     def add(midi, start, duration, velocity=85):
@@ -273,10 +270,12 @@ def apply_actions(original: Project, actions: list[Action], selection: dict | No
             except ValueError as error:
                 raise EditError(f"Those project settings are out of range: {', '.join(sorted(p))}") from error
             if updated.key != project.key or updated.scale != project.scale:
-                old_root, new_root = pitch.Pitch(project.key).pitchClass, pitch.Pitch(updated.key).pitchClass
+                old_root, new_root = PITCH_CLASSES.index(project.key), PITCH_CLASSES.index(updated.key)
                 shift = (new_root - old_root + 6) % 12 - 6
-                old_intervals = [0, 2, 3, 5, 7, 8, 10] if project.scale == "minor" else [0, 2, 4, 5, 7, 9, 11]
-                new_intervals = [0, 2, 3, 5, 7, 8, 10] if updated.scale == "minor" else [0, 2, 4, 5, 7, 9, 11]
+                # Moving between modes keeps each note on its own scale degree,
+                # so a melody stays the same melody and only its colour changes.
+                old_intervals = list(SCALE_STEPS[project.scale])
+                new_intervals = list(SCALE_STEPS[updated.scale])
                 for track in updated.tracks:
                     if track.role in {"drums", "audio"}:
                         continue
@@ -585,6 +584,13 @@ def apply_actions(original: Project, actions: list[Action], selection: dict | No
                                 voices = min(5, max(len(c.intervals) for _, _, c in entries))
                         if findings is not None:
                             findings.append(f"Took {heard} and built {harmony_module.describe(entries)} in {section.name}.")
+                            # A progression written for one mode can land on a
+                            # diminished chord in another. That is correct and
+                            # it is also a surprise, so RDX says it rather than
+                            # letting an unstable chord arrive unannounced.
+                            odd = sorted({c.symbol for _, _, c in entries if c.triad == "diminished"})
+                            if odd:
+                                findings.append(f"{' and '.join(odd)} is diminished in {project.key} {project.scale} — that degree is unstable in this mode.")
                         low = int(p.get("low", 48))
                         high = int(p.get("high", 72))
                         if not 0 <= low < high <= 127:

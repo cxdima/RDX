@@ -1,12 +1,12 @@
 {
   "counts": {
-    "train": 1651,
-    "valid": 181,
-    "test": 181
+    "train": 1667,
+    "valid": 186,
+    "test": 185
   },
-  "intents": 129,
+  "intents": 133,
   "skipped": {
-    "relate_harmonise": 4
+    "relate_harmonise": 2
   },
   "source": "Synthetic instruction/operation pairs, every one executed against the RDX edit engine before being written. No human musical-quality labels.",
   "split": "By phrasing family: the wordings in valid and test never appear in train, so validation measures new phrasing rather than recall. Musical contexts are randomised independently.",

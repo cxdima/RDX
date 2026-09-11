@@ -93,6 +93,8 @@ const PATCHES = [
   { name: "riser_noise", roles: ["pad", "lead"] },
 ];
 const WAVES = ["preset", "saw", "square", "triangle", "sine", "pulse"];
+/** Mirrors SCALE_STEPS in rdx/domain.py; a scale offered here must exist there. */
+const SCALES = ["major", "minor", "dorian", "phrygian", "lydian", "mixolydian"];
 const LFO_TARGETS = ["off", "cutoff", "pitch", "volume"];
 
 const PRESET_LABELS: Record<string, string> = {
@@ -884,8 +886,11 @@ export default function App() {
             )
           }
         >
-          <option value="minor">Minor</option>
-          <option value="major">Major</option>
+          {SCALES.map((name) => (
+            <option key={name} value={name}>
+              {name[0].toUpperCase() + name.slice(1)}
+            </option>
+          ))}
         </select>
         <span className="push" />
         <span className="local-status">

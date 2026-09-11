@@ -13,7 +13,7 @@ from pathlib import Path
 
 import pytest
 
-from rdx.domain import Action, Clip, DRUM_MAP, Kit, LFO_TARGETS, Note, Sound, WAVES
+from rdx.domain import Action, Clip, DRUM_MAP, Kit, LFO_TARGETS, Note, SCALES, SCALE_STEPS, Sound, WAVES
 from rdx.engine import EditError, Unsupported, apply_actions, starter_project
 from rdx.musical import design, drums, harmony, melody, moves, parts, sidechain
 from rdx.musical.character import CHARACTERS, character_changes
@@ -1109,3 +1109,75 @@ def test_a_structure_that_would_not_fit_is_refused_rather_than_truncated(project
     long = apply_actions(project, [Action(kind="move", params={"name": "structure", "structure": "anthem"})], selection)
     with pytest.raises(EditError):
         apply_actions(long, [Action(kind="move", params={"name": "structure", "structure": "anthem", "bars": 64})], selection)
+
+
+# --- modes -----------------------------------------------------------------
+
+
+def scale_run(project, section_name="Main"):
+    """An eight-note run up the scale on the lead, for watching a mode change."""
+    section = next(s for s in project.sections if s.name == section_name)
+    lead = next(t for t in project.tracks if t.role == "lead")
+    lead.clips = [Clip(name="Run", section_id=section.id, notes=[Note(pitch=p, start=float(i), duration=0.9, velocity=90) for i, p in enumerate([69, 71, 72, 74, 76, 77, 79, 81])])]
+    return type(project).model_validate(project.model_dump())
+
+
+def pitches_of(project, role="lead"):
+    return [n.pitch for t in project.tracks if t.role == role for c in t.clips for n in c.notes]
+
+
+def test_dorian_raises_the_sixth_and_changes_nothing_else(project, selection):
+    after = apply_actions(scale_run(project), [Action(kind="project", params={"scale": "dorian"})], selection)
+    assert pitches_of(after) == [69, 71, 72, 74, 76, 78, 79, 81], "only the F moves, and it moves up one"
+
+
+def test_phrygian_flattens_the_second_and_changes_nothing_else(project, selection):
+    after = apply_actions(scale_run(project), [Action(kind="project", params={"scale": "phrygian"})], selection)
+    assert pitches_of(after) == [69, 70, 72, 74, 76, 77, 79, 81], "only the B moves, and it moves down one"
+
+
+def test_a_melody_keeps_its_shape_through_any_mode_change(project, selection):
+    run = scale_run(project)
+    for mode in ("major", "dorian", "phrygian", "lydian", "mixolydian"):
+        after = apply_actions(run, [Action(kind="project", params={"scale": mode})], selection)
+        moved = pitches_of(after)
+        assert len(moved) == 8
+        assert moved == sorted(moved), f"{mode} should still be a rising run"
+        assert moved[-1] - moved[0] == 12, f"{mode} should still span an octave"
+
+
+def test_every_mode_produces_seven_usable_chords():
+    for mode in SCALES:
+        chords = harmony.diatonic("A", mode)
+        assert len({c.degree for c in chords}) == 7
+        assert all(c.quality in harmony.TRIADS for c in chords)
+
+
+def test_the_borrowed_major_dominant_appears_where_the_fifth_is_minor():
+    """The cadence wants it in the modes that do not already have it."""
+    for mode in ("minor", "dorian", "mixolydian"):
+        symbols = [c.symbol for c in harmony.diatonic("A", mode)]
+        assert symbols.count("E") == 1, f"{mode} should borrow a major V"
+    assert "E" in [c.symbol for c in harmony.diatonic("A", "major")], "major already has one"
+
+
+def test_a_progression_that_lands_on_a_diminished_chord_says_so(project, selection):
+    findings: list[str] = []
+    dorian = apply_actions(project, [Action(kind="project", params={"scale": "dorian"})], selection)
+    apply_actions(dorian, [Action(kind="harmony", track="chords", section="Main", params={"progression": "trance"})], selection, findings)
+    assert any("diminished" in line and "dorian" in line for line in findings)
+
+
+def test_composing_in_a_mode_stays_in_that_mode(project, selection):
+    for mode in SCALES:
+        in_mode = apply_actions(project, [Action(kind="project", params={"scale": mode})], selection)
+        written = apply_actions(in_mode, [Action(kind="compose", track="lead", section="Main", params={"density": 0.9})], selection)
+        allowed = {(9 + step) % 12 for step in SCALE_STEPS[mode]}
+        assert {p % 12 for p in pitches_of(written)} <= allowed, mode
+
+
+def test_the_scales_offered_in_the_studio_all_exist_in_python():
+    source = (ROOT / "src/App.tsx").read_text()
+    block = re.search(r"const SCALES = \[(.*?)\];", source, re.S)
+    assert block, "src/App.tsx must list the scales it offers"
+    assert set(re.findall(r'"(\w+)"', block.group(1))) == set(SCALES)
