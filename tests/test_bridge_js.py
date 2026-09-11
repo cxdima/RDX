@@ -33,6 +33,8 @@ def run(live_set: dict, tmp_path: Path) -> dict:
     by_id: dict[str, dict] = {}
     for track in live_set.get("track_objects", []):
         by_id[str(track["id"])] = track
+        for slot in track.get("slot_objects", []):
+            by_id[str(slot["id"])] = slot
         for device in track.get("device_objects", []):
             by_id[str(device["id"])] = device
             for parameter in device.get("parameter_objects", []):
@@ -59,6 +61,7 @@ def a_set(tracks: list[dict], tempo: float = 124.0) -> dict:
         for device in track.get("devices", []):
             parameters = [{"id": next_id(), "name": name, "min": 0.0, "max": 1.0, "value": 0.5} for name in device.get("parameters", [])]
             devices.append({"id": next_id(), "name": device["name"], "class_name": device.get("class_name", "InstrumentVector"), "class_display_name": device.get("kind", device["name"]), "parameters": [p["id"] for p in parameters], "parameter_objects": parameters})
+        slots = [{"id": next_id(), "has_clip": 0} for _ in range(track.get("slots", 0))]
         track_objects.append({
             "id": next_id(),
             "name": track["name"],
@@ -66,7 +69,8 @@ def a_set(tracks: list[dict], tempo: float = 124.0) -> dict:
             "devices": [d["id"] for d in devices],
             "device_objects": devices,
             "arrangement_clips": [],
-            "clip_slots": [],
+            "clip_slots": [s["id"] for s in slots],
+            "slot_objects": slots,
         })
     return {"id": 1, "tempo": tempo, "is_playing": 0, "tracks": [t["id"] for t in track_objects], "track_objects": track_objects}
 
@@ -166,4 +170,38 @@ def test_a_device_with_many_parameters_does_not_bloat_the_poll(tmp_path):
     state = run(a_set([{"name": "Big", "midi": True, "devices": [{"name": "Wavetable", "parameters": many}]}]), tmp_path)["state"]
     device = state["tracks"][0]["devices"][0]
     assert device["parameter_count"] == 200, "the real count is still reported"
-    assert len(device["parameters"]) == 64, "but the names are capped"
+    assert len(device["parameters"]) == 24, "but the names are capped"
+
+
+def test_no_single_poll_ever_costs_live_very_much(tmp_path):
+    """The bridge runs inside Live's own process, so every Live API object it
+    builds and every property it reads is CPU taken from the music.
+
+    Against the Set RDX had just transferred into — nine tracks, a Wavetable on
+    each — reading the whole picture on every poll cost over a thousand round
+    trips every 1.5 seconds, and Live sat at 137% CPU with nothing playing.
+    Moving that to a slow timer would have fixed the average and left a burst
+    big enough to cause a dropout, so instead the sweep walks one track per
+    poll: no poll is expensive, and the full picture still arrives.
+    """
+    tracks = [
+        {"name": f"RDX {i}", "midi": True, "slots": 8, "devices": [{"name": "Wavetable", "parameters": [f"Param {q}" for q in range(93)]}]}
+        for i in range(9)
+    ]
+    state = run(a_set(tracks), tmp_path)
+    cost = state["cost"]
+    assert max(cost) < 200, f"no poll reads much: {cost}"
+    assert sum(cost) / len(cost) < 100, f"and the average poll costs a fraction of the old 1340: {cost}"
+    assert min(cost) <= 8, "and a poll during the rest between sweeps reads almost nothing"
+    assert len(state["state"]["tracks"]) == 9, "and the whole Set is still reported"
+    assert state["state"]["scanned"] is True
+
+
+def test_the_set_reads_as_unscanned_until_the_first_sweep_finishes(tmp_path):
+    """Nothing read yet must not look like an empty Set: RDX appends a transfer
+    after whatever Live already contains, and 'nothing here' is where it would
+    put the tracks."""
+    tracks = [{"name": f"T{i}", "midi": True, "slots": 8} for i in range(40)]
+    state = run(a_set(tracks), tmp_path)
+    assert state["state"]["scanned"] is False, "40 tracks take more than 26 polls to sweep"
+    assert state["state"]["tracks"] is None

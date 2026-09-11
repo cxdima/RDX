@@ -17,8 +17,14 @@ function asList(value) {
   return [value];
 }
 
+// Every Live API object built and every property read is a round trip into
+// Live's process, and it is that count — not this harness's own speed — that
+// decides whether the device is a burden on a machine trying to make music.
+const cost = { built: 0, reads: 0 };
+
 class FakeLiveAPI {
   constructor(_callback, pathOrId) {
+    cost.built++;
     const key = String(pathOrId);
     this.id = 1;
     if (key === "live_set") this.node = set;
@@ -28,6 +34,7 @@ class FakeLiveAPI {
     this.id = this.node.id ?? 0;
   }
   get(property) {
+    cost.reads++;
     const value = this.node[property];
     if (value === undefined) return [0];
     // Live returns child collections as ["id", 3, "id", 5, ...].
@@ -79,12 +86,19 @@ if (mode === "--notes") {
   process.exit(0);
 }
 
-// Several polls, because the device scan runs on a slower cycle than the rest.
-for (let i = 0; i < 10; i++) context.snapshot();
+// Several polls, because the device scan runs on a slower cycle than the rest,
+// and the per-poll cost is recorded so a test can hold it down.
+const polls = [];
+for (let i = 0; i < 26; i++) {
+  const before = cost.built + cost.reads;
+  context.snapshot();
+  polls.push(cost.built + cost.reads - before);
+}
 const states = captured.filter(([index, kind]) => index === 0 && kind === "state");
 const errors = captured.filter(([index]) => index === 1);
 console.log(JSON.stringify({
   polls: states.length,
+  cost: polls,
   errors: errors.map((e) => e[1]),
   state: states.length ? JSON.parse(states[states.length - 1][2]) : null,
 }));

@@ -19,8 +19,13 @@ from pathlib import Path
 
 import httpx
 
+from rdx.bridge import DEVICE_VERSION
+
 ROOT = Path(__file__).resolve().parent.parent
-STATE = {"tempo": 124.0, "has_content": False, "arrangement_end": 0, "track_count": 0, "playing": False, "busy": False}
+# Exactly what bridge/live.js reports, version included: a payload that has
+# drifted from the device it impersonates proves the wrong thing, and would make
+# the studio show a stale-device warning during its own self-test.
+STATE = {"tempo": 124.0, "has_content": False, "arrangement_end": 0, "track_count": 0, "playing": False, "busy": False, "tracks": None, "scanned": False, "device_version": DEVICE_VERSION}
 
 
 def fail(message: str) -> int:

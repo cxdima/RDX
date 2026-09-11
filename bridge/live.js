@@ -7,7 +7,7 @@ outlets = 2;
 // in the background it does not fire at all — and a stale script that looks
 // connected is the hardest kind of failure to see. Bump this whenever the
 // behaviour changes, and the studio will say when the device needs reloading.
-var DEVICE_VERSION = 3;
+var DEVICE_VERSION = 4;
 
 var busy = false;
 var completed = {};
@@ -27,57 +27,136 @@ function text(object, property) {
     return (value && value.join ? value.join(' ') : String(value)).trim();
 }
 
-// Reading every device on every track is far heavier than reading the tempo,
-// so it happens on its own slower cycle and the answer is cached between.
-var scanned = null;
-var pollsSinceScan = 99;
+// This device runs inside Live's own process, so every Live API object it
+// builds and every property it reads is CPU taken from the music.
+//
+// Reading the whole Set on every poll — each track, its devices, their
+// parameters, its clips — costs over a thousand round trips in a Set RDX has
+// transferred into. Doing that every 1.5 seconds put Live at 137% CPU with
+// nothing playing, and a burst that size inside Live's process is also how you
+// get an audible dropout.
+//
+// So a poll reads three properties, and the expensive picture is rebuilt by a
+// sweep that walks one track per poll and then rests. The cost per poll is one
+// track's worth, there is no burst, and the picture is never older than a
+// sweep. A transfer starts a new sweep immediately, because it has just made
+// the old one wrong.
+//
+// What a transfer appends after is never read from here — see command().
+var REST_POLLS = 12;   // roughly 18 seconds of quiet between sweeps
+var PARAMETERS = 24;   // enough to recognise a device, cheap enough to ask for
 
-function devices() {
-    var song = api('live_set');
-    var trackIds = ids(song.get('tracks'));
-    var summary = [];
-    for (var i = 0; i < trackIds.length; i++) {
-        var track = api('id ' + trackIds[i]);
-        var deviceIds = ids(track.get('devices'));
-        var listed = [];
-        for (var d = 0; d < deviceIds.length; d++) {
-            var device = api('id ' + deviceIds[d]);
-            // Parameter names are what a sound mapping has to be built from,
-            // and for a plugin they can only be discovered at runtime. Capped
-            // so a Set full of big devices cannot bloat a poll that runs every
-            // twelve seconds.
-            var parameterIds = ids(device.get('parameters'));
-            var parameters = [];
-            for (var q = 0; q < parameterIds.length && q < 64; q++) {
-                var parameter = api('id ' + parameterIds[q]);
-                // The range matters as much as the name: a value cannot be set
-                // correctly without knowing what scale Live keeps it on, and
-                // that is not guessable from the name alone.
-                parameters.push({
-                    name: text(parameter, 'name'),
-                    min: number(parameter, 'min'),
-                    max: number(parameter, 'max'),
-                    value: number(parameter, 'value')
-                });
-            }
-            listed.push({
-                name: text(device, 'name'),
-                // PluginDevice means a VST or AU: RDX can drive its parameters
-                // but can never insert it, which is the whole template-Set idea.
-                plugin: text(device, 'class_name') === 'PluginDevice',
-                kind: text(device, 'class_display_name'),
-                parameter_count: parameterIds.length,
-                parameters: parameters
+var published = null;  // the last complete picture; what a poll reports
+var sweeping = null;   // the one being built
+var cursor = 0;
+var resting = 0;
+
+function scanTrack(id) {
+    var track = api('id ' + id);
+    var deviceIds = ids(track.get('devices'));
+    var listed = [];
+    for (var d = 0; d < deviceIds.length; d++) {
+        var device = api('id ' + deviceIds[d]);
+        // Parameter names are what a sound mapping is built from, and for a
+        // plugin they can only be discovered at runtime.
+        var parameterIds = ids(device.get('parameters'));
+        var parameters = [];
+        for (var q = 0; q < parameterIds.length && q < PARAMETERS; q++) {
+            var parameter = api('id ' + parameterIds[q]);
+            parameters.push({
+                name: text(parameter, 'name'),
+                min: number(parameter, 'min'),
+                max: number(parameter, 'max'),
+                value: number(parameter, 'value')
             });
         }
-        summary.push({
-            name: text(track, 'name'),
-            midi: !!number(track, 'has_midi_input'),
-            devices: listed
+        listed.push({
+            name: text(device, 'name'),
+            // PluginDevice means a VST or AU: RDX can drive its parameters but
+            // can never insert it, which is the whole template-Set idea.
+            plugin: text(device, 'class_name') === 'PluginDevice',
+            kind: text(device, 'class_display_name'),
+            parameter_count: parameterIds.length,
+            parameters: parameters
         });
     }
-    return summary;
+    return {name: text(track, 'name'), midi: !!number(track, 'has_midi_input'), devices: listed};
 }
+
+function trackContent(id) {
+    var track = api('id ' + id);
+    var clips = ids(track.get('arrangement_clips'));
+    var end = 0;
+    for (var c = 0; c < clips.length; c++) end = Math.max(end, number(api('id ' + clips[c]), 'end_time'));
+    if (clips.length) return {content: true, end: end};
+    var slots = ids(track.get('clip_slots'));
+    for (var s = 0; s < slots.length; s++) if (number(api('id ' + slots[s]), 'has_clip')) return {content: true, end: 0};
+    return {content: false, end: 0};
+}
+
+function advance(trackIds) {
+    if (sweeping === null) {
+        if (resting > 0) {resting--;return;}
+        sweeping = {tracks: [], has_content: false, arrangement_end: 0};
+        cursor = 0;
+    }
+    if (cursor < trackIds.length) {
+        var id = trackIds[cursor++];
+        sweeping.tracks.push(scanTrack(id));
+        var found = trackContent(id);
+        if (found.content) sweeping.has_content = true;
+        sweeping.arrangement_end = Math.max(sweeping.arrangement_end, found.end);
+    }
+    if (cursor >= trackIds.length) {
+        published = sweeping;
+        sweeping = null;
+        resting = REST_POLLS;
+    }
+}
+
+// The exact state of the arrangement, read now rather than remembered. A
+// transfer decides where to append from this, so a stale answer would write
+// RDX's tracks on top of the user's music.
+function contents() {
+    var trackIds = ids(api('live_set').get('tracks'));
+    var picture = {has_content: false, arrangement_end: 0};
+    for (var i = 0; i < trackIds.length; i++) {
+        var found = trackContent(trackIds[i]);
+        if (found.content) picture.has_content = true;
+        picture.arrangement_end = Math.max(picture.arrangement_end, found.end);
+    }
+    return picture;
+}
+
+function state() {
+    var song = api('live_set');
+    if (!Number(song.id)) throw new Error('Open this device inside Ableton Live');
+    var trackIds = ids(song.get('tracks'));
+    try {advance(trackIds);} catch (error) {sweeping = null;resting = REST_POLLS;}
+    var picture = published || {tracks: null, has_content: false, arrangement_end: 0};
+    return {
+        tempo: number(song, 'tempo'),
+        has_content: picture.has_content,
+        arrangement_end: picture.arrangement_end,
+        track_count: trackIds.length,
+        playing: !!number(song, 'is_playing'),
+        busy: busy,
+        tracks: picture.tracks,
+        // Null until the first sweep finishes, so the studio can tell "still
+        // reading the Set" apart from "the Set is empty".
+        scanned: published !== null,
+        device_version: DEVICE_VERSION
+    };
+}
+
+function refresh() {
+    // A transfer just changed the Set, so start a fresh sweep on the next poll
+    // rather than reporting what was there before it.
+    published = null;
+    sweeping = null;
+    resting = 0;
+}
+
 function read(filename) {
     var file = new File(filename, 'read');
     if (!file.isopen) throw new Error('Transfer file is missing');
@@ -153,28 +232,6 @@ function addInstrument(track, role) {
     return 'no instrument (' + attempts.join('; ') + ')';
 }
 
-function state() {
-    var song = api('live_set');
-    if (!Number(song.id)) throw new Error('Open this device inside Ableton Live');
-    var tracks = ids(song.get('tracks'));
-    var end = 0;
-    var content = false;
-    for (var i = 0; i < tracks.length; i++) {
-        var track = api('id ' + tracks[i]);
-        var clips = ids(track.get('arrangement_clips'));
-        for (var c = 0; c < clips.length; c++) {
-            content = true;
-            end = Math.max(end, number(api('id ' + clips[c]), 'end_time'));
-        }
-        var slots = ids(track.get('clip_slots'));
-        for (var s = 0; s < slots.length; s++) if (number(api('id ' + slots[s]), 'has_clip')) content = true;
-    }
-    if (++pollsSinceScan >= 8) {
-        try { scanned = devices(); } catch (error) { scanned = null; }
-        pollsSinceScan = 0;
-    }
-    return {tempo:number(song, 'tempo'), has_content:content, arrangement_end:end, track_count:tracks.length, playing:!!number(song, 'is_playing'), busy:busy, tracks:scanned, device_version:DEVICE_VERSION};
-}
 function snapshot() {
     try {outlet(0, 'state', JSON.stringify(state()));}
     catch (error) {outlet(1, String(error.message));}
@@ -198,6 +255,7 @@ function command(filename) {
     function finish(ok, message) {
         if (undoOpen) {song.call('end_undo_step');undoOpen = false;}
         busy = false;
+        refresh();
         var result = {id:job.id,ok:ok,message:message,created_tracks:created,start_beat:start};
         completed[job.id] = result;
         outlet(0, 'result', JSON.stringify(result));
@@ -220,9 +278,11 @@ function command(filename) {
     }
     try {
         if (job.kind !== 'append_project') throw new Error('Unsupported transfer');
-        var current = state();
-        if (current.playing) throw new Error('Stop Live playback before transferring');
-        if (current.has_content && Math.abs(current.tempo - job.project.tempo) > 0.01) throw new Error('Live tempo changed; match it to RDX before transferring');
+        if (number(song, 'is_playing')) throw new Error('Stop Live playback before transferring');
+        // Read fresh: appending after a remembered end would land on top of
+        // whatever the user has added since the last sweep.
+        var current = contents();
+        if (current.has_content && Math.abs(number(song, 'tempo') - job.project.tempo) > 0.01) throw new Error('Live tempo changed; match it to RDX before transferring');
         start = Math.ceil(current.arrangement_end / 4) * 4;
         song.call('begin_undo_step');undoOpen = true;
         if (!current.has_content) song.set('tempo', job.project.tempo);

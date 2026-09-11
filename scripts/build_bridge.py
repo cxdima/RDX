@@ -1,5 +1,6 @@
 """Package the Max patch using the installed Live audio-device container format."""
 import json
+import shutil
 import struct
 from pathlib import Path
 
@@ -49,6 +50,24 @@ def build():
     destination.write_bytes(source[:28] + struct.pack('<I', len(serialized)) + serialized)
     assert json.loads(destination.read_bytes()[32:].rstrip(b'\0')) == patch
     print(f'Built {destination}')
+    install(destination)
+
+
+# Live's own browser reads this folder, so a device copied here appears under
+# Places > User Library > Presets > Audio Effects > Max Audio Effect and can be
+# dragged onto a track without leaving Ableton. Reloading it after a change
+# still means dragging it off the track and back on — `autowatch` does not fire
+# with Live in the background — but at least Finder is out of the loop.
+LIBRARY = Path.home() / 'Music/Ableton/User Library/Presets/Audio Effects/Max Audio Effect'
+
+
+def install(device: Path):
+    if not LIBRARY.parent.parent.parent.exists():
+        print('No Ableton User Library found, so the device was not installed into it.')
+        return
+    LIBRARY.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(device, LIBRARY / device.name)
+    print(f'Installed into the Live browser: User Library > Presets > Audio Effects > Max Audio Effect > {device.stem}')
 
 
 if __name__ == '__main__':
