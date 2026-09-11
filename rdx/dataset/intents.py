@@ -404,6 +404,9 @@ def intents() -> list[Intent]:
             "I want another copy of this part right after it",
             "double the length of this section by repeating it",
             "copy this section",
+            "clone this section",
+            "put another one of these straight after",
+            "make a second copy of this part and place it next",
         ), lambda scene, rng: ([act("arrange", {"operation": "duplicate"}, section="selected")], "")),
         Intent("add_section", (
             "add an eight bar breakdown section",
@@ -569,6 +572,44 @@ def intents() -> list[Intent]:
             "simplify the bassline",
             "just hold the bass notes",
         ), lambda scene, rng: ([act("bassline", {"pattern": rng.choice(["sustained", "halftime"])}, track="bass", section="selected")], "")),
+    ]
+
+    # Melodies. The point of naming a cell, a shape and a form is that "write
+    # me a proper trance lead" and "give me something I can sing" are different
+    # requests, and the difference is expressible rather than a density number.
+    items += [
+        Intent("melody_trance", (
+            "write a proper trance lead over this",
+            "the melody sounds too simple, make it a real one",
+            "give me a plucky trance melody that goes somewhere",
+            "I want a lead line with an actual hook",
+        ), lambda scene, rng: ([act("melody", {"cell": "pluck", "shape": rng.choice(["wave", "question", "ascent"]), "form": "trance"}, track="lead", section="selected")], "")),
+        Intent("melody_anthem", (
+            "give me a breakdown melody I can sing",
+            "I want long emotional notes here, not a pluck",
+            "make the melody big and slow",
+            "this needs an anthem melody",
+        ), lambda scene, rng: ([act("melody", {"cell": "anthem", "shape": rng.choice(["ascent", "arch"]), "form": "anthem"}, track="lead", section="selected")], "")),
+        Intent("melody_call_response", (
+            "write the lead as call and response",
+            "I want the melody to answer itself",
+            "compose a lead with silence between its phrases",
+        ), lambda scene, rng: ([act("melody", {"cell": "call", "form": "answer"}, track="lead", section="selected")], "")),
+        Intent("melody_acid", (
+            "give me an acid line on the lead",
+            "I want sixteenths rolling into a held note",
+            "make the lead psytrance style",
+        ), lambda scene, rng: ([act("melody", {"cell": "roll", "shape": "hook", "form": "driving", "anchor": "chord"}, track="lead", section="selected")], "")),
+        Intent("melody_climb", (
+            "the melody should climb through the section",
+            "make the lead build towards the end",
+            "I want the melody to keep rising",
+        ), lambda scene, rng: ([act("melody", {"shape": "ascent", "form": "rising"}, track="lead", section="selected")], "")),
+        Intent("melody_repetitive", (
+            "the melody is too repetitive",
+            "every bar of the lead sounds the same",
+            "develop the melody instead of looping it",
+        ), lambda scene, rng: ([act("melody", {"form": rng.choice(["trance", "driving"]), "shape": rng.choice(["wave", "question"])}, track="lead", section="selected")], "")),
     ]
 
     # Chords and arrangements asked for by name rather than hummed.
@@ -800,6 +841,9 @@ def intents() -> list[Intent]:
             "the {track} should get out of the way of the kick",
             "add sidechain compression to the {track} from the drums",
             "the kick and the {track} are fighting, duck the {track}",
+            "the {track} should duck out of the way when the kick hits",
+            "pull the {track} back on every kick",
+            "make the {track} step aside for the kick",
         ), lambda scene, rng: ([act("sidechain", {"source": "drums", "shape": rng.choice(["pump", "tight", "gentle"])}, track=scene.name(scene.selected_role))], "")),
         Intent("sidechain_everything", (
             "I want that pumping sidechain effect",
@@ -807,6 +851,9 @@ def intents() -> list[Intent]:
             "sidechain everything to the kick",
             "give me that pumping trance feel",
             "everything should breathe with the kick",
+            "the whole mix should pulse with every kick",
+            "I want everything moving under the drums",
+            "put that trance pump across the whole record",
         ), lambda scene, rng: ([act("move", {"name": "pump"})], "")),
         Intent("sidechain_amount", (
             "more pump on the {track}",
@@ -843,6 +890,8 @@ def intents() -> list[Intent]:
             "add a tape stop at the end",
             "do a tape stop into the drop",
             "I want that slowing down tape effect",
+            "can you make it sound like the tape is stopping",
+            "I want the track to wind down like a record player",
         ), refuse("RDX cannot do a tape stop. A fade or a filter sweep into the drop is what I have.")),
         Intent("refuse_sample", (
             "sample this vocal and chop it up",

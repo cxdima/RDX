@@ -152,6 +152,13 @@ CASES: list[Case] = [
     Case("Put the final output limiter ceiling at -2 dB.", "mechanical", does("master", ceiling=-2.0)),
     Case("Keep the rhythm but let the final note rise two semitones.", "mechanical", does("transpose", role="lead", semitones=2, last_note=True)),
     Case("I love these drums, protect them from changes.", "mechanical", does("protect", role="drums", locked=True)),
+    # Melodies. The capability that exists because the user said the music
+    # "doesn't feel like real trance" — so the benchmark has to be able to tell
+    # whether the model can reach it. Phrasings deliberately unlike the ones in
+    # intents.py, which is what makes this measure generalisation.
+    Case("This lead is boring, write me something with an actual hook.", "melody", does("melody", role="lead")),
+    Case("This lead should start low and climb to a high point before it settles.", "melody", does("melody", role="lead")),
+    Case("For the quiet part I want long notes I can hum, not a plucky thing.", "melody", lambda p, pr, refused=None: does("melody", role="lead")(p, pr, refused) or (None if find(p, "melody")[0].params.get("cell") in {"anthem", "call", "stab"} else f"cell was {find(p, 'melody')[0].params.get('cell')!r}, expected a held one")),
 ]
 
 
@@ -215,7 +222,7 @@ def evaluate(use_adapter: bool = False, verbose: bool = True) -> dict:
         bucket["total"] += 1
         bucket["passed"] += int(row["passed"])
     report = {
-        "benchmark_version": 4,
+        "benchmark_version": 5,
         "model": "adapter" if use_adapter else "base",
         "passed": sum(r["passed"] for r in results),
         "total": len(results),

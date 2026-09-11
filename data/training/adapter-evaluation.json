@@ -1,19 +1,31 @@
 {
-  "benchmark_version": 3,
+  "benchmark_version": 5,
   "model": "adapter",
-  "passed": 14,
-  "total": 22,
+  "passed": 25,
+  "total": 32,
   "by_category": {
     "the example": {
-      "passed": 4,
+      "passed": 7,
       "total": 7
     },
     "musical language": {
       "passed": 4,
-      "total": 4
+      "total": 6
     },
     "compound": {
-      "passed": 0,
+      "passed": 1,
+      "total": 1
+    },
+    "shaping": {
+      "passed": 1,
+      "total": 2
+    },
+    "relating": {
+      "passed": 2,
+      "total": 2
+    },
+    "arranging": {
+      "passed": 1,
       "total": 1
     },
     "declining": {
@@ -21,50 +33,51 @@
       "total": 4
     },
     "targeting": {
-      "passed": 2,
+      "passed": 1,
       "total": 2
     },
     "mechanical": {
-      "passed": 2,
+      "passed": 4,
       "total": 4
+    },
+    "melody": {
+      "passed": 2,
+      "total": 3
     }
   },
   "outcomes": {
-    "acted": 18,
+    "acted": 27,
     "refused": 3,
-    "unusable": 1
+    "unusable": 2
   },
   "wrong_edits": [
-    "Build it up and then let everything suddenly fade right at the end.",
-    "The beat should be a steady kick with two claps close together.",
-    "Make the bass darker and turn it down a bit.",
-    "Sidechain the pads to the kick so it pumps.",
-    "Make it better.",
-    "Keep the rhythm but let the final note rise two semitones."
+    "The chords need to move out of the way each time the kick lands.",
+    "There are too many notes in this melody; give it room to breathe.",
+    "Put a tape stop right before the drop.",
+    "Every bar of the top line is identical. Develop it."
   ],
   "leaked_into_training": [],
   "cases": [
     {
       "request": "I need a build up in this section.",
       "category": "the example",
-      "seconds": 3.79,
+      "seconds": 2.29,
       "passed": true,
-      "generated": "<think>\n\n</think>\n\n{\"actions\":[{\"kind\":\"move\",\"params\":{\"name\":\"buildup\"},\"section\":\"selected\"}]}",
+      "generated": "<think>\n\n</think>\n\n{\"actions\":[{\"kind\":\"move\",\"params\":{\"name\":\"buildup\",\"intensity\":0.8},\"section\":\"selected\"}]}",
       "outcome": "acted"
     },
     {
       "request": "Build it up and then let everything suddenly fade right at the end.",
       "category": "the example",
-      "seconds": 3.37,
-      "passed": false,
-      "generated": "<think>\n\n</think>\n\n{\"actions\":[{\"kind\":\"move\",\"params\":{\"name\":\"buildup\"},\"section\":\"selected\"}]}",
-      "outcome": "acted",
-      "reason": "no cut at the end"
+      "seconds": 1.59,
+      "passed": true,
+      "generated": "<think>\n\n</think>\n\n{\"actions\":[{\"kind\":\"move\",\"params\":{\"name\":\"buildup\",\"intensity\":0.8,\"cut_bars\":0.5},\"section\":\"selected\"}]}",
+      "outcome": "acted"
     },
     {
       "request": "Add a string instrument to the track.",
       "category": "the example",
-      "seconds": 3.47,
+      "seconds": 1.43,
       "passed": true,
       "generated": "<think>\n\n</think>\n\n{\"actions\":[{\"kind\":\"add_track\",\"params\":{\"role\":\"chords\",\"name\":\"Strings\",\"preset\":\"strings\"}}]}",
       "outcome": "acted"
@@ -72,34 +85,31 @@
     {
       "request": "Turn the humming I recorded into a chord progression.",
       "category": "the example",
-      "seconds": 3.46,
+      "seconds": 1.41,
       "passed": true,
-      "generated": "<think>\n\n</think>\n\n{\"actions\":[{\"kind\":\"harmony\",\"params\":{\"span\":2},\"track\":\"Chords\",\"section\":\"selected\"}]}",
+      "generated": "<think>\n\n</think>\n\n{\"actions\":[{\"kind\":\"harmony\",\"params\":{\"span\":2},\"track\":\"selected\",\"section\":\"selected\"}]}",
       "outcome": "acted"
     },
     {
       "request": "The beat should be a steady kick with two claps close together.",
       "category": "the example",
-      "seconds": 3.47,
-      "passed": false,
-      "generated": "<think>\n\n</think>\n\n{\"actions\":[{\"kind\":\"kit\",\"params\":{\"kit\":\"four_floor\"},\"track\":\"drums\",\"section\":\"selected\"}]}",
-      "outcome": "acted",
-      "reason": "clap layer was None, expected 'double'"
+      "seconds": 1.56,
+      "passed": true,
+      "generated": "<think>\n\n</think>\n\n{\"actions\":[{\"kind\":\"kit\",\"params\":{\"layers\":{\"kick\":\"four_floor\",\"clap\":\"double\"}},\"track\":\"drums\",\"section\":\"selected\"}]}",
+      "outcome": "acted"
     },
     {
       "request": "Put a strong synth in together with the melody.",
       "category": "the example",
-      "seconds": 3.36,
-      "passed": false,
-      "generated": "<think>\n\n</think>\n\n{\"actions\":[{\"kind\":\"character\",\"params\":{\"character\":\"strong\"},\"track\":\"Lead\"}]}",
-      "outcome": "refused",
-      "refusal": "RDX has no sound character called 'strong'. It knows: airy, bright, clean, clear, dark, dreamy, dry, fat, goosebumps, gritty, hard, huge, loose, lush, metallic, moving, narrow, punchy, sharp, smooth, soft, still, swirling, thin, tight, warm, wet, wide.",
-      "reason": "the engine refused it: RDX has no sound character called 'strong'. It knows: airy, bright, clean, clear, dark, dreamy, dry, fat, goosebumps, gritty, hard, huge, loose, lush, metallic, moving, narrow, punchy, sharp, smooth, soft, still, swirling, thin, tight, warm, wet, wide."
+      "seconds": 1.43,
+      "passed": true,
+      "generated": "<think>\n\n</think>\n\n{\"actions\":[{\"kind\":\"move\",\"params\":{\"name\":\"layer\",\"track\":\"Lead\",\"preset\":\"supersaw\"}}]}",
+      "outcome": "acted"
     },
     {
       "request": "Add a pan and a flanger to that synth so it gives goosebumps.",
       "category": "the example",
-      "seconds": 3.41,
+      "seconds": 1.56,
       "passed": true,
       "generated": "<think>\n\n</think>\n\n{\"actions\":[{\"kind\":\"character\",\"params\":{\"character\":\"goosebumps\"},\"track\":\"Lead\"}]}",
       "outcome": "acted"
@@ -107,31 +117,31 @@
     {
       "request": "The lead sounds too harsh. Warm it up.",
       "category": "musical language",
-      "seconds": 3.35,
+      "seconds": 1.33,
       "passed": true,
-      "generated": "<think>\n\n</think>\n\n{\"actions\":[{\"kind\":\"character\",\"params\":{\"character\":\"warm\"},\"track\":\"Lead\"}]}",
+      "generated": "<think>\n\n</think>\n\n{\"actions\":[{\"kind\":\"character\",\"params\":{\"character\":\"warm\"},\"track\":\"lead\"}]}",
       "outcome": "acted"
     },
     {
       "request": "Make the chords dreamy.",
       "category": "musical language",
-      "seconds": 3.37,
+      "seconds": 1.36,
       "passed": true,
-      "generated": "<think>\n\n</think>\n\n{\"actions\":[{\"kind\":\"character\",\"params\":{\"character\":\"dreamy\"},\"track\":\"Chords\"}]}",
+      "generated": "<think>\n\n</think>\n\n{\"actions\":[{\"kind\":\"character\",\"params\":{\"character\":\"dreamy\"},\"track\":\"chords\"}]}",
       "outcome": "acted"
     },
     {
       "request": "The bass feels weak and thin.",
       "category": "musical language",
-      "seconds": 3.3,
+      "seconds": 1.34,
       "passed": true,
-      "generated": "<think>\n\n</think>\n\n{\"actions\":[{\"kind\":\"character\",\"params\":{\"character\":\"fat\"},\"track\":\"Bass\"}]}",
+      "generated": "<think>\n\n</think>\n\n{\"actions\":[{\"kind\":\"character\",\"params\":{\"character\":\"fat\"},\"track\":\"bass\"}]}",
       "outcome": "acted"
     },
     {
       "request": "I want this melody to sound absolutely massive.",
       "category": "musical language",
-      "seconds": 3.2,
+      "seconds": 1.33,
       "passed": true,
       "generated": "<think>\n\n</think>\n\n{\"actions\":[{\"kind\":\"character\",\"params\":{\"character\":\"huge\"},\"track\":\"Lead\"}]}",
       "outcome": "acted"
@@ -139,52 +149,109 @@
     {
       "request": "Make the bass darker and turn it down a bit.",
       "category": "compound",
-      "seconds": 3.21,
-      "passed": false,
-      "generated": "<think>\n\n</think>\n\n{\"actions\":[{\"kind\":\"character\",\"params\":{\"character\":\"dark\"},\"track\":\"Bass\"}]}",
-      "outcome": "acted",
-      "reason": "expected a darker character and a level change, got ['character']"
+      "seconds": 1.6,
+      "passed": true,
+      "generated": "<think>\n\n</think>\n\n{\"actions\":[{\"kind\":\"character\",\"params\":{\"character\":\"dark\"},\"track\":\"bass\"},{\"kind\":\"mix\",\"params\":{\"delta_db\":-3},\"track\":\"bass\"}]}",
+      "outcome": "acted"
     },
     {
-      "request": "Sidechain the pads to the kick so it pumps.",
-      "category": "declining",
-      "seconds": 3.39,
+      "request": "The chords need to move out of the way each time the kick lands.",
+      "category": "musical language",
+      "seconds": 1.59,
       "passed": false,
-      "generated": "<think>\n\n</think>\n\n{\"actions\":[{\"kind\":\"character\",\"params\":{\"character\":\"moving\",\"intensity\":0.3},\"track\":\"Chords\"}]}",
+      "generated": "<think>\n\n</think>\n\n{\"actions\":[{\"kind\":\"relate\",\"params\":{\"operation\":\"counter\",\"from_track\":\"drums\",\"against\":\"kick\"},\"track\":\"chords\",\"section\":\"selected\"}]}",
       "outcome": "acted",
-      "reason": "acted anyway: ['character']"
+      "reason": "expected ducking, got [('relate', {'operation': 'counter', 'from_track': 'drums', 'against': 'kick'})]"
+    },
+    {
+      "request": "I want the whole track breathing with the beat.",
+      "category": "musical language",
+      "seconds": 1.36,
+      "passed": false,
+      "generated": "<think>\n\n</think>\n\n{\"actions\":[{\"kind\":\"move\",\"params\":{\"name\":\"breathing\"},\"section\":\"selected\"}]}",
+      "outcome": "refused",
+      "refusal": "'breathing' is not a production move RDX knows. Available: breakdown, buildup, double_time, drop, fade, layer, pump, riser, structure, stutter, transition.",
+      "reason": "expected ducking, got [('move', {'name': 'breathing'})]"
+    },
+    {
+      "request": "There are too many notes in this melody; give it room to breathe.",
+      "category": "shaping",
+      "seconds": 1.47,
+      "passed": false,
+      "generated": "<think>\n\n</think>\n\n{\"actions\":[{\"kind\":\"melody\",\"params\":{\"cell\":\"call\",\"form\":\"answer\"},\"track\":\"lead\",\"section\":\"selected\"}]}",
+      "outcome": "acted",
+      "reason": "no phrase action (got ['melody'])"
+    },
+    {
+      "request": "I want the last stretch of the melody to climb upwards.",
+      "category": "shaping",
+      "seconds": 1.52,
+      "passed": true,
+      "generated": "<think>\n\n</think>\n\n{\"actions\":[{\"kind\":\"phrase\",\"params\":{\"operation\":\"shape\",\"shape\":\"rise\",\"degrees\":3},\"track\":\"Lead\",\"section\":\"selected\"}]}",
+      "outcome": "acted"
+    },
+    {
+      "request": "The bassline should sit under whatever the chords are doing.",
+      "category": "relating",
+      "seconds": 1.52,
+      "passed": true,
+      "generated": "<think>\n\n</think>\n\n{\"actions\":[{\"kind\":\"relate\",\"params\":{\"operation\":\"follow\",\"from_track\":\"chords\"},\"track\":\"bass\",\"section\":\"selected\"}]}",
+      "outcome": "acted"
+    },
+    {
+      "request": "These chords are plain. Put a seventh on each of them.",
+      "category": "relating",
+      "seconds": 1.44,
+      "passed": true,
+      "generated": "<think>\n\n</think>\n\n{\"actions\":[{\"kind\":\"harmony\",\"params\":{\"colour\":\"seventh\"},\"track\":\"chords\",\"section\":\"selected\"}]}",
+      "outcome": "acted"
+    },
+    {
+      "request": "These two sections crash into each other. Smooth out the join.",
+      "category": "arranging",
+      "seconds": 1.32,
+      "passed": true,
+      "generated": "<think>\n\n</think>\n\n{\"actions\":[{\"kind\":\"move\",\"params\":{\"name\":\"transition\"},\"section\":\"selected\"}]}",
+      "outcome": "acted"
+    },
+    {
+      "request": "Is this mix muddy? Fix whatever is wrong with it.",
+      "category": "declining",
+      "seconds": 1.29,
+      "passed": false,
+      "generated": "<think>\n\n</think>\n\n{\"actions\":[{\"kind\":\"mix_fix\",\"params\":{\"problem\":\"muddy\"}}]}",
+      "outcome": "unusable",
+      "reason": "Analyse the mix before asking me to fix it \u2014 I will not guess at a problem I have not measured. Use Analyse the mix in the mixer."
     },
     {
       "request": "Load Serum on the lead and use my preset.",
       "category": "declining",
-      "seconds": 3.19,
+      "seconds": 1.69,
       "passed": true,
-      "generated": "<think>\n\n</think>\n\n{\"actions\":[{\"kind\":\"sound\",\"params\":{\"preset\":\"Serum\"}}]}",
-      "outcome": "refused",
-      "refusal": "There is no 'Serum' instrument. Available: saw, supersaw, pluck, sine, sub, pad, strings, choir, bell, fm, noise."
+      "generated": "<think>\n\n</think>\n\n{\"actions\":[],\"note\":\"RDX cannot host plugins. Its own instruments are supersaw, saw, pluck, sine, sub, pad, strings, choir, bell, fm and noise.\"}",
+      "outcome": "refused"
     },
     {
       "request": "Put a tape stop right before the drop.",
       "category": "declining",
-      "seconds": 3.39,
-      "passed": true,
-      "generated": "<think>\n\n</think>\n\n{\"actions\":[{\"kind\":\"move\",\"params\":{\"name\":\"tape_stop\",\"beats\":2},\"section\":\"selected\"}]}",
-      "outcome": "refused",
-      "refusal": "'tape_stop' is not a production move RDX knows. Available: breakdown, buildup, drop, fade, layer."
+      "seconds": 1.33,
+      "passed": false,
+      "generated": "<think>\n\n</think>\n\n{\"actions\":[{\"kind\":\"move\",\"params\":{\"name\":\"drop\"},\"section\":\"selected\"}]}",
+      "outcome": "acted",
+      "reason": "acted anyway: ['move']"
     },
     {
       "request": "Make it better.",
       "category": "declining",
-      "seconds": 3.26,
-      "passed": false,
-      "generated": "<think>\n\n</think>\n\n{\"actions\":[{\"kind\":\"character\",\"params\":{\"character\":\"hard\"},\"track\":\"Lead\"}]}",
-      "outcome": "acted",
-      "reason": "acted anyway: ['character']"
+      "seconds": 1.37,
+      "passed": true,
+      "generated": "<think>\n\n</think>\n\n{\"actions\":[],\"note\":\"Which part should change, and what do you hear that is wrong?\"}",
+      "outcome": "refused"
     },
     {
       "request": "Give me a broken beat instead of a straight one.",
       "category": "targeting",
-      "seconds": 3.35,
+      "seconds": 1.41,
       "passed": true,
       "generated": "<think>\n\n</think>\n\n{\"actions\":[{\"kind\":\"kit\",\"params\":{\"kit\":\"breakbeat\"},\"track\":\"drums\",\"section\":\"selected\"}]}",
       "outcome": "acted"
@@ -192,15 +259,16 @@
     {
       "request": "I want another copy of this section right after it.",
       "category": "targeting",
-      "seconds": 3.3,
-      "passed": true,
-      "generated": "<think>\n\n</think>\n\n{\"actions\":[{\"kind\":\"arrange\",\"params\":{\"operation\":\"duplicate\"},\"track\":\"selected\",\"section\":\"selected\"}]}",
-      "outcome": "acted"
+      "seconds": 1.57,
+      "passed": false,
+      "generated": "<think>\n\n</think>\n\n{\"actions\":[{\"kind\":\"arrange\",\"params\":{\"operation\":\"copy\",\"from_section\":\"da440bf37f8b\"},\"section\":\"selected\"}]}",
+      "outcome": "unusable",
+      "reason": "Build is already itself; name the section to copy from"
     },
     {
       "request": "Bring the tempo down to 117 beats per minute.",
       "category": "mechanical",
-      "seconds": 3.22,
+      "seconds": 1.34,
       "passed": true,
       "generated": "<think>\n\n</think>\n\n{\"actions\":[{\"kind\":\"project\",\"params\":{\"tempo\":117.0}}]}",
       "outcome": "acted"
@@ -208,29 +276,52 @@
     {
       "request": "Put the final output limiter ceiling at -2 dB.",
       "category": "mechanical",
-      "seconds": 3.19,
-      "passed": false,
-      "generated": "<think>\n\n</think>\n\n{\"actions\":[{\"kind\":\"project\",\"params\":{\"ceiling\":-2.0}}]}",
-      "outcome": "unusable",
-      "reason": "Unsupported settings: ceiling"
+      "seconds": 1.28,
+      "passed": true,
+      "generated": "<think>\n\n</think>\n\n{\"actions\":[{\"kind\":\"master\",\"params\":{\"ceiling\":-2}}]}",
+      "outcome": "acted"
     },
     {
       "request": "Keep the rhythm but let the final note rise two semitones.",
       "category": "mechanical",
-      "seconds": 3.31,
-      "passed": false,
-      "generated": "<think>\n\n</think>\n\n{\"actions\":[{\"kind\":\"transpose\",\"params\":{\"semitones\":2},\"track\":\"Lead\",\"section\":\"selected\"}]}",
-      "outcome": "acted",
-      "reason": "last_note was None, expected True"
+      "seconds": 1.5,
+      "passed": true,
+      "generated": "<think>\n\n</think>\n\n{\"actions\":[{\"kind\":\"transpose\",\"params\":{\"semitones\":2,\"last_note\":true},\"track\":\"Lead\",\"section\":\"selected\"}]}",
+      "outcome": "acted"
     },
     {
       "request": "I love these drums, protect them from changes.",
       "category": "mechanical",
-      "seconds": 3.22,
+      "seconds": 1.34,
       "passed": true,
       "generated": "<think>\n\n</think>\n\n{\"actions\":[{\"kind\":\"protect\",\"params\":{\"locked\":true},\"track\":\"drums\"}]}",
       "outcome": "acted"
+    },
+    {
+      "request": "This lead is boring, write me something with an actual hook.",
+      "category": "melody",
+      "seconds": 1.54,
+      "passed": true,
+      "generated": "<think>\n\n</think>\n\n{\"actions\":[{\"kind\":\"melody\",\"params\":{\"cell\":\"pluck\",\"shape\":\"wave\",\"form\":\"trance\"},\"track\":\"lead\",\"section\":\"selected\"}]}",
+      "outcome": "acted"
+    },
+    {
+      "request": "Every bar of the top line is identical. Develop it.",
+      "category": "melody",
+      "seconds": 1.48,
+      "passed": false,
+      "generated": "<think>\n\n</think>\n\n{\"actions\":[{\"kind\":\"phrase\",\"params\":{\"operation\":\"space\",\"amount\":0.5},\"track\":\"Lead\",\"section\":\"selected\"}]}",
+      "outcome": "acted",
+      "reason": "no melody action (got ['phrase'])"
+    },
+    {
+      "request": "For the quiet part I want long notes I can hum, not a plucky thing.",
+      "category": "melody",
+      "seconds": 1.6,
+      "passed": true,
+      "generated": "<think>\n\n</think>\n\n{\"actions\":[{\"kind\":\"melody\",\"params\":{\"cell\":\"anthem\",\"shape\":\"ascent\",\"form\":\"anthem\"},\"track\":\"lead\",\"section\":\"selected\"}]}",
+      "outcome": "acted"
     }
   ],
-  "limits": "Executable instruction following on 22 hand-written requests in the user's own phrasing, none of which appear in the training data. A refusal counts whether the model declined or the engine stopped it, because either way the user is told RDX cannot do it; wrong_edits lists the cases where something different was silently applied, which is the failure that matters. Does not measure musical quality, taste or audio understanding."
+  "limits": "Executable instruction following on 32 hand-written requests in the producer's own phrasing, none of which appear in the training data. A refusal counts whether the model declined or the engine stopped it, because either way the user is told RDX cannot do it; wrong_edits lists the cases where something different was silently applied, which is the failure that matters. Does not measure musical quality, taste or audio understanding."
 }

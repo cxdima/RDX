@@ -13,7 +13,10 @@ ROOT = Path(__file__).resolve().parent.parent
 DATA = Path(os.environ.get("RDX_DATA_DIR", ROOT / "data")).resolve()
 MODEL = ROOT / "data" / "models" / "qwen3-4b"
 # The active adapter is protected; train a new version by setting RDX_ADAPTER.
-ADAPTER = Path(os.environ.get("RDX_ADAPTER", ROOT / "data" / "models" / "rdx-v1")).resolve()
+# This has to name the version that is actually approved: it pointed at rdx-v1
+# for a while after that adapter was retired, so RDX quietly ran the base model
+# while reporting a trained one, and a finished training run went unused.
+ADAPTER = Path(os.environ.get("RDX_ADAPTER", ROOT / "data" / "models" / "rdx-v3")).resolve()
 
 SYSTEM = """You are RDX, a local co-producer for trance and electronic music. The user describes a feeling; you pick the operation that delivers it.
 
@@ -39,6 +42,7 @@ bassline (track, section) — params pattern, progression, from_track. The rhyth
 compose (track, section) — params density, variation. Writes notes for bass, chords, lead or pad.
 transpose (track, section) — params semitones, last_note, start, end.
 rhythm (track, section) — params grid, swing, humanize, velocity.
+melody (track, section) — params cell, shape, form, anchor, density, progression, from_track. Writes a lead as one idea developed across eight bars, following the chords. cell is the rhythm of the idea: pluck (sixteenths with gaps, the trance lead), anthem (long notes you can sing, for a breakdown), call (three notes then silence), drive (straight eighths), push (syncopated), roll (sixteenths into a held note, the acid line), stab (two long notes a bar). shape is where it goes: climb, fall, arch, turn, hook, leap, hover, ascent, wave, question, descent. form is what happens to it across the phrase: trance, anthem, answer, driving, rising, loop. anchor "key" holds the idea still while the chords move under it, "chord" transposes it with them. Use this when the melody itself is wrong — too simple, too repetitive, no hook. Use phrase instead to reshape notes that are already right.
 phrase (track, section) — params operation, amount, shape, degrees. Changes the shape of a melody rather than its individual notes. operation "space" thins it out and holds the rest, "fill" adds passing notes, "vary" breaks up a phrase that repeats itself, "shape" bends its contour with shape one of rise, fall, arch, valley, flat.
 notes (track, section) — params operation (replace, add, remove), notes.
 automation (track, section) — params parameter (cutoff, resonance, volume_db, pan, reverb, flanger, chorus, drive, width, delay, crush), points, operation.
@@ -77,7 +81,9 @@ class LocalModel:
         details = json.loads(training.read_text()) if training.exists() else {}
         ready = (MODEL / "rdx-source.json").exists() and (MODEL / "chat_template.jinja").exists() and bool(list(MODEL.glob("*.safetensors")))
         active = (ADAPTER / "approved.json").exists()
-        return {"downloaded": ready, "trained": active, "name": "RDX v1" if active else "Qwen3 local base", "training": details, "offline": True}
+        # Named from the directory rather than hardcoded, so the studio cannot
+        # claim to be running a version it is not.
+        return {"downloaded": ready, "trained": active, "name": ADAPTER.name.replace("rdx-", "RDX ") if active else "Qwen3 local base", "training": details, "offline": True}
 
     def generate(self, project_context: dict, request: str, previous: list[dict]) -> Plan:
         with self.lock:

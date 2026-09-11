@@ -1,0 +1,6 @@
+{
+  "deactivated_at": "2026-09-11T12:34:34.106629+00:00",
+  "deactivated_because": "Never activated. Trained on a different machine against an earlier system prompt and action vocabulary, so every example embeds a prompt the model no longer receives \u2014 rdx/promote.py would refuse it outright. Superseded by rdx-v3, which scores 25/32 against the base model's 11/32 on benchmark version 5. Weights are kept because they are small and travel with the repository, so the comparison can be rerun.",
+  "superseded_by": "data/models/rdx-v3",
+  "benchmark_version": 5
+}

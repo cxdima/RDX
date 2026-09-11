@@ -1,0 +1,50 @@
+{
+    "adapter_path": "/Users/dmoiseenko/Development/RDX/data/models/rdx-v3",
+    "batch_size": 2,
+    "clear_cache_threshold": 0,
+    "config": "/Users/dmoiseenko/Development/RDX/data/training/train.yaml",
+    "data": "/Users/dmoiseenko/Development/RDX/data/training",
+    "fine_tune_type": "lora",
+    "grad_accumulation_steps": 1,
+    "grad_checkpoint": true,
+    "iters": 2400,
+    "learning_rate": 6e-05,
+    "lora_parameters": {
+        "dropout": 0.0,
+        "rank": 48,
+        "scale": 32.0
+    },
+    "lr_schedule": {
+        "arguments": [
+            6e-05,
+            2400,
+            6e-06
+        ],
+        "name": "cosine_decay",
+        "warmup": 80,
+        "warmup_init": 1e-06
+    },
+    "mask_prompt": true,
+    "max_seq_length": 2560,
+    "model": "/Users/dmoiseenko/Development/RDX/data/models/qwen3-4b",
+    "num_layers": 16,
+    "optimizer": "adam",
+    "optimizer_config": {
+        "adam": {},
+        "adamw": {},
+        "muon": {},
+        "sgd": {},
+        "adafactor": {}
+    },
+    "project_name": null,
+    "report_to": null,
+    "resume_adapter_file": null,
+    "save_every": 100,
+    "seed": 2026,
+    "steps_per_eval": 100,
+    "steps_per_report": 20,
+    "test": false,
+    "test_batches": 500,
+    "train": true,
+    "val_batches": 8
+}
