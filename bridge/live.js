@@ -21,6 +21,42 @@ function read(filename) {
     file.close();
     return JSON.parse(text);
 }
+function countNotes(clip, length) {
+    // get_notes_extended answers with the dictionary's *contents* as JSON, not
+    // with a name to look up. Parsing it as a name silently yields an empty
+    // dictionary, which reads as "Live kept 0 notes" even when the notes are
+    // sitting right there. Confirmed against Live 12.4.5 on 10 September 2026.
+    var raw;
+    try {
+        raw = String(clip.call('get_notes_extended', 0, 127, 0, length));
+    } catch (error) {
+        return {count: -1, detail: 'get_notes_extended threw: ' + error.message};
+    }
+    try {
+        var parsed = JSON.parse(raw);
+        return {count: (parsed.notes || []).length, detail: ''};
+    } catch (error) {
+        return {count: -1, detail: 'unreadable reply: ' + raw.slice(0, 80)};
+    }
+}
+function addNotes(clip, notes, length) {
+    // Pass the Dict itself. The documented-looking form
+    // clip.call('add_new_notes', 'dictionary', dict.name) throws nothing and
+    // adds nothing, which is the worst combination; it was silently losing
+    // every note until a read-back proved the clip was empty afterwards.
+    var dict = new Dict();
+    dict.parse(JSON.stringify({notes: notes}));
+    try {
+        clip.call('add_new_notes', dict);
+    } catch (error) {
+        dict.freepeer();
+        return {ok: false, detail: 'add_new_notes threw: ' + error.message};
+    }
+    dict.freepeer();
+    var got = countNotes(clip, length);
+    if (got.count >= notes.length) return {ok: true, count: got.count};
+    return {ok: false, detail: 'Live kept ' + got.count + ' of ' + notes.length + (got.detail ? ' (' + got.detail + ')' : '')};
+}
 function state() {
     var song = api('live_set');
     if (!Number(song.id)) throw new Error('Open this device inside Ableton Live');
@@ -113,11 +149,9 @@ function command(filename) {
                         if (added.length !== 1) throw new Error('MIDI clip creation did not complete');
                         var clip = api('id ' + added[0]);
                         clip.set('name', section.name + ' - ' + source.name);
-                        var dict = new Dict();
-                        dict.parse(JSON.stringify({notes:sourceClip.notes.map(function(n) {return {pitch:n.pitch,start_time:n.start,duration:n.duration,velocity:n.velocity,mute:0};})}));
-                        var addedNotes = clip.call('add_new_notes', 'dictionary', dict.name);
-                        dict.freepeer();
-                        if (!addedNotes || addedNotes.length < sourceClip.notes.length) throw new Error('Live did not confirm all MIDI notes');
+                        var payload = sourceClip.notes.map(function(n) {return {pitch:n.pitch,start_time:n.start,duration:n.duration,velocity:n.velocity,mute:0};});
+                        var written = addNotes(clip, payload, section.bars * 4);
+                        if (!written.ok) throw new Error(written.detail + ' notes in ' + section.name);
                     }
                     offset += section.bars * 4;
                 });

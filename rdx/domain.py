@@ -236,6 +236,11 @@ class Project(Model):
         for track in self.tracks:
             if track.kit and track.role != "drums":
                 raise ValueError("Only drum tracks have drum voices")
+            if track.role == "drums" and track.kit is None:
+                # A project saved before drum voices existed still has drums.
+                # Filling the defaults on load means every drum track answers
+                # the same questions, however old the file is.
+                track.kit = Kit()
             if track.sidechain:
                 if track.sidechain.source == track.id:
                     raise ValueError("A track cannot duck to itself")

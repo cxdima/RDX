@@ -229,3 +229,15 @@ def test_long_chains_of_edits_never_produce_an_invalid_project():
             except ValueError:
                 continue  # a refusal in plain language is a correct outcome
             type(project).model_validate(project.model_dump())
+
+
+def test_a_project_saved_before_drum_voices_existed_gets_them_on_load():
+    """Older files still have drums; they should still answer for their sound."""
+    project = starter_project()
+    raw = project.model_dump()
+    for track in raw["tracks"]:
+        track.pop("kit", None)
+    loaded = type(project).model_validate(raw)
+    drums = next(t for t in loaded.tracks if t.role == "drums")
+    assert drums.kit is not None and drums.kit.kick_decay > 0
+    assert all(t.kit is None for t in loaded.tracks if t.role != "drums")

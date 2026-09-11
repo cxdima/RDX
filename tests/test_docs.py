@@ -78,11 +78,14 @@ def test_every_instrument_is_named_in_the_readme(preset):
     assert re.search(rf"\b{spelled}\b", README, re.I), f"{preset} is playable but undocumented"
 
 
-def test_the_readme_does_not_claim_the_ableton_transfer_works():
-    """The one claim in this project that must never soften by accident.
+def test_the_readme_does_not_overstate_the_ableton_bridge():
+    """The claim in this project most likely to drift upward.
 
-    The handshake was confirmed on 10 September 2026 and the README says so.
-    The transfer has not been, and this fails if that sentence ever loses its
-    "never" — which is the only way it should be allowed to change.
+    The transfer was watched working once, on one machine, on 10 September
+    2026. "Works, and has been watched working once" is the honest shape of
+    that, and it should only ever change deliberately — which is why the count
+    and the caveat are pinned here.
     """
-    assert re.search(r"the\s+transfer\s+—\s+has \*\*never\*\* been confirmed", README, re.S)
+    assert re.search(r"has been watched working \*\*once\*\*|watched working once", README)
+    assert re.search(r"one\s+confirmed run on one machine, not a guarantee", README)
+    assert re.search(r"Automation does not cross into Live", README)
