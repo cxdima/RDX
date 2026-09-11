@@ -13,7 +13,7 @@ from pathlib import Path
 
 import pytest
 
-from rdx.domain import Action, Clip, DRUM_MAP, LFO_TARGETS, Note, Sound, WAVES
+from rdx.domain import Action, Clip, DRUM_MAP, Kit, LFO_TARGETS, Note, Sound, WAVES
 from rdx.engine import EditError, Unsupported, apply_actions, starter_project
 from rdx.musical import design, drums, harmony, melody, moves, parts, sidechain
 from rdx.musical.character import CHARACTERS, character_changes
@@ -967,3 +967,55 @@ def test_the_waveforms_and_lfo_targets_match_the_model():
         block = re.search(rf"const {constant} = \[(.*?)\];", source, re.S)
         assert block, constant
         assert tuple(re.findall(r'"([\w]+)"', block.group(1))) == expected
+
+
+# --- drum voices -----------------------------------------------------------
+
+
+def test_every_drum_machine_is_a_kit_the_engine_can_make(project, selection):
+    for name, machine in design.DRUM_KITS.items():
+        after = apply_actions(project, [Action(kind="kit_sound", track="drums", params={"machine": name})], selection)
+        kit = next(t for t in after.tracks if t.role == "drums").kit
+        for field, value in machine.settings.items():
+            assert getattr(kit, field) == value, f"{name}.{field}"
+
+
+def test_an_808_kick_rings_much_longer_than_a_909(project, selection):
+    def kick_decay(machine):
+        after = apply_actions(project, [Action(kind="kit_sound", track="drums", params={"machine": machine})], selection)
+        return next(t for t in after.tracks if t.role == "drums").kit.kick_decay
+
+    assert kick_decay("808") > kick_decay("909") * 2, "that tail is the whole difference"
+
+
+def test_a_drum_machine_replaces_the_voices_but_a_named_setting_still_wins(project, selection):
+    after = apply_actions(project, [Action(kind="kit_sound", track="drums", params={"machine": "909", "kick_decay": 0.8})], selection)
+    kit = next(t for t in after.tracks if t.role == "drums").kit
+    assert kit.kick_decay == 0.8 and kit.hat_tone == design.DRUM_KITS["909"].settings["hat_tone"]
+
+
+def test_tweaking_one_voice_leaves_the_rest_of_the_kit_alone(project, selection):
+    eight = apply_actions(project, [Action(kind="kit_sound", track="drums", params={"machine": "808"})], selection)
+    after = apply_actions(eight, [Action(kind="kit_sound", track="drums", params={"kick_tune": 3})], selection)
+    kit = next(t for t in after.tracks if t.role == "drums").kit
+    assert kit.kick_tune == 3 and kit.kick_decay == design.DRUM_KITS["808"].settings["kick_decay"]
+
+
+def test_drum_voices_only_exist_on_drum_tracks(project, selection):
+    with pytest.raises(EditError, match="not a drum track"):
+        apply_actions(project, [Action(kind="kit_sound", track="lead", params={"kick_tune": 2})], selection)
+
+
+def test_an_unknown_drum_machine_is_refused_by_name(project, selection):
+    with pytest.raises(Unsupported, match="909"):
+        apply_actions(project, [Action(kind="kit_sound", track="drums", params={"machine": "linndrum"})], selection)
+
+
+def test_the_studio_starts_from_the_same_drum_voices_as_python():
+    """The browser's defaults are what an untouched kit sounds like."""
+    source = (ROOT / "src/audio/drums.ts").read_text()
+    block = re.search(r"export const DEFAULT_KIT: Kit = (\{.*?\n\});", source, re.S)
+    assert block, "src/audio/drums.ts must export DEFAULT_KIT"
+    literal = re.sub(r"(\w+):", r'"\1":', block.group(1))
+    mirrored = json.loads(re.sub(r",(\s*[}\]])", r"\1", literal))
+    assert mirrored == {name: getattr(Kit(), name) for name in Kit.model_fields}

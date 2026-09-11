@@ -105,7 +105,10 @@ export class StudioAudio {
       await ready(chain);
       if (generation !== this.generation) return;
 
-      const kit = track.role === "drums" ? createKit(chain.input) : null;
+      const kit =
+        track.role === "drums"
+          ? createKit(chain.input, track.kit ?? undefined)
+          : null;
       const voice =
         track.role === "drums" || track.role === "audio"
           ? null

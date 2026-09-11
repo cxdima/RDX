@@ -1,4 +1,5 @@
 import * as Tone from "tone";
+import type { Kit } from "../types";
 
 /**
  * The drum pitches RDX plays. This mirrors DRUM_MAP in rdx/domain.py and
@@ -47,7 +48,27 @@ function noiseVoice(
   return { synth, nodes: [synth, shape] };
 }
 
-export function createKit(destination: Destination): DrumKit {
+/** The default voices, matching Kit() in rdx/domain.py. */
+export const DEFAULT_KIT: Kit = {
+  kick_tune: 0,
+  kick_decay: 0.3,
+  kick_click: 0.035,
+  snare_tone: 1400,
+  snare_decay: 0.13,
+  clap_spread: 1,
+  hat_tone: 8500,
+  hat_decay: 0.035,
+  open_decay: 0.32,
+};
+
+/** Semitones as a frequency ratio, for tuning the kick. */
+const tuned = (note: string, semitones: number) =>
+  Tone.Frequency(note).transpose(semitones).toFrequency();
+
+export function createKit(
+  destination: Destination,
+  kit: Kit = DEFAULT_KIT,
+): DrumKit {
   const nodes: { dispose(): unknown }[] = [];
   const keep = <T extends { dispose(): unknown }>(node: T) => {
     nodes.push(node);
@@ -56,9 +77,14 @@ export function createKit(destination: Destination): DrumKit {
 
   const kick = keep(
     new Tone.MembraneSynth({
-      pitchDecay: 0.035,
+      pitchDecay: kit.kick_click,
       octaves: 7,
-      envelope: { attack: 0.001, decay: 0.3, sustain: 0, release: 0.1 },
+      envelope: {
+        attack: 0.001,
+        decay: kit.kick_decay,
+        sustain: 0,
+        release: 0.1,
+      },
       volume: -2,
     }).connect(destination),
   );
@@ -71,7 +97,13 @@ export function createKit(destination: Destination): DrumKit {
     }).connect(destination),
   );
 
-  const snareNoise = noiseVoice(destination, "highpass", 1400, 0.13, -12);
+  const snareNoise = noiseVoice(
+    destination,
+    "highpass",
+    kit.snare_tone,
+    kit.snare_decay,
+    -12,
+  );
   const snareBody = keep(
     new Tone.MembraneSynth({
       pitchDecay: 0.01,
@@ -87,9 +119,27 @@ export function createKit(destination: Destination): DrumKit {
   const clap = noiseVoice(destination, "bandpass", 1250, 0.09, -10, 1.6);
   clap.nodes.forEach(keep);
 
-  const hat = noiseVoice(destination, "highpass", 8500, 0.035, -17);
-  const pedal = noiseVoice(destination, "highpass", 7000, 0.022, -20);
-  const open = noiseVoice(destination, "highpass", 7800, 0.32, -19);
+  const hat = noiseVoice(
+    destination,
+    "highpass",
+    kit.hat_tone,
+    kit.hat_decay,
+    -17,
+  );
+  const pedal = noiseVoice(
+    destination,
+    "highpass",
+    kit.hat_tone * 0.82,
+    kit.hat_decay * 0.63,
+    -20,
+  );
+  const open = noiseVoice(
+    destination,
+    "highpass",
+    kit.hat_tone * 0.92,
+    kit.open_decay,
+    -19,
+  );
   const crash = noiseVoice(destination, "highpass", 4200, 1.6, -16);
   const ride = noiseVoice(destination, "bandpass", 5200, 0.5, -21, 0.8);
   const rim = noiseVoice(destination, "bandpass", 2200, 0.03, -14, 3);
@@ -97,17 +147,29 @@ export function createKit(destination: Destination): DrumKit {
     voice.nodes.forEach(keep),
   );
 
-  const CLAP_SPREAD = [0, 0.009, 0.019, 0.031];
+  // How far apart the bursts of a clap sit: wider reads as more hands.
+  const CLAP_SPREAD = [0, 0.009, 0.019, 0.031].map(
+    (offset) => offset * kit.clap_spread,
+  );
 
   return {
     nodes,
     trigger(pitch, time, velocity) {
       switch (pitch) {
         case 36:
-          kick.triggerAttackRelease("C1", 0.12, time, velocity);
+          kick.triggerAttackRelease(
+            tuned("C1", kit.kick_tune),
+            kit.kick_decay * 0.4,
+            time,
+            velocity,
+          );
           return;
         case 38:
-          snareNoise.synth.triggerAttackRelease(0.11, time, velocity);
+          snareNoise.synth.triggerAttackRelease(
+            kit.snare_decay * 0.85,
+            time,
+            velocity,
+          );
           snareBody.triggerAttackRelease("G2", 0.08, time, velocity * 0.8);
           return;
         case 39:
@@ -122,13 +184,17 @@ export function createKit(destination: Destination): DrumKit {
           rim.synth.triggerAttackRelease(0.03, time, velocity);
           return;
         case 42:
-          hat.synth.triggerAttackRelease(0.035, time, velocity);
+          hat.synth.triggerAttackRelease(kit.hat_decay, time, velocity);
           return;
         case 44:
-          pedal.synth.triggerAttackRelease(0.022, time, velocity);
+          pedal.synth.triggerAttackRelease(
+            kit.hat_decay * 0.63,
+            time,
+            velocity,
+          );
           return;
         case 46:
-          open.synth.triggerAttackRelease(0.3, time, velocity);
+          open.synth.triggerAttackRelease(kit.open_decay, time, velocity);
           return;
         case 49:
           crash.synth.triggerAttackRelease(1.4, time, velocity);
@@ -146,7 +212,7 @@ export function createKit(destination: Destination): DrumKit {
           toms.triggerAttackRelease("A2", 0.18, time, velocity);
           return;
         default:
-          hat.synth.triggerAttackRelease(0.035, time, velocity);
+          hat.synth.triggerAttackRelease(kit.hat_decay, time, velocity);
       }
     },
   };

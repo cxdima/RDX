@@ -118,6 +118,25 @@ PRESET_DEFAULTS: dict[str, dict[str, float | int | str]] = {
 }
 
 
+class Kit(Model):
+    """How the drum voices themselves sound, as opposed to what they play.
+
+    `drums.py` decides where a kick lands; this decides what that kick is. They
+    are separate because they are separate questions — a 909 pattern with an
+    808 kick is a real thing to want, and neither choice implies the other.
+    """
+
+    kick_tune: float = Field(default=0, ge=-12, le=12)  # semitones
+    kick_decay: float = Field(default=0.3, ge=0.05, le=1.5)
+    kick_click: float = Field(default=0.035, ge=0.002, le=0.2)  # pitch sweep time
+    snare_tone: float = Field(default=1400, ge=200, le=6000)
+    snare_decay: float = Field(default=0.13, ge=0.02, le=0.8)
+    clap_spread: float = Field(default=1, ge=0.2, le=3)  # how wide the flam is
+    hat_tone: float = Field(default=8500, ge=2000, le=16000)
+    hat_decay: float = Field(default=0.035, ge=0.005, le=0.3)
+    open_decay: float = Field(default=0.32, ge=0.05, le=1.5)
+
+
 class Sidechain(Model):
     """Ducking keyed off another track's notes. See rdx/musical/sidechain.py.
 
@@ -160,6 +179,8 @@ class Track(Model):
     solo: bool = False
     locked: bool = False
     sound: Sound = Field(default_factory=Sound)
+    # Only drum tracks carry one; validated below so it cannot drift elsewhere.
+    kit: Kit | None = None
     sidechain: Sidechain | None = None
     clips: list[Clip] = Field(default_factory=list, max_length=64)
     automation: list[Automation] = Field(default_factory=list, max_length=64)
@@ -193,6 +214,8 @@ class Project(Model):
         bars = {s.id: s.bars for s in self.sections}
         track_ids = {t.id for t in self.tracks}
         for track in self.tracks:
+            if track.kit and track.role != "drums":
+                raise ValueError("Only drum tracks have drum voices")
             if track.sidechain:
                 if track.sidechain.source == track.id:
                     raise ValueError("A track cannot duck to itself")
@@ -221,7 +244,7 @@ class Project(Model):
 
 
 class Action(Model):
-    kind: Literal["project", "compose", "drums", "kit", "transpose", "rhythm", "sound", "character", "harmony", "move", "mix", "arrange", "master", "notes", "add_track", "remove_track", "duplicate_track", "protect", "automation", "sidechain", "mix_fix", "phrase", "relate"]
+    kind: Literal["project", "compose", "drums", "kit", "transpose", "rhythm", "sound", "character", "harmony", "move", "mix", "arrange", "master", "notes", "add_track", "remove_track", "duplicate_track", "protect", "automation", "sidechain", "mix_fix", "phrase", "relate", "kit_sound"]
     track: str | None = None
     section: str | None = None
     params: dict = Field(default_factory=dict)
@@ -253,8 +276,9 @@ def new_track(role: str, name: str | None = None) -> Track:
     presets = {"drums": "drumkit", "bass": "sine", "chords": "pad", "lead": "pluck", "pad": "pad", "audio": "audio"}
     preset = presets[role]
     sound = Sound.model_validate({"preset": preset, **PRESET_DEFAULTS.get(preset, {})})
+    kit = Kit() if role == "drums" else None
     if role in ("pad", "chords"):
         sound.attack, sound.release, sound.reverb = 0.3, 1.5, 0.25
     if role == "bass":
         sound.cutoff, sound.reverb, sound.delay = 900, 0, 0
-    return Track(name=name or role.title(), role=role, color=COLORS[role], sound=sound)
+    return Track(name=name or role.title(), role=role, color=COLORS[role], sound=sound, kit=kit)

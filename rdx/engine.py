@@ -5,7 +5,7 @@ import math
 
 from music21 import pitch, scale
 
-from .domain import Action, Automation, Clip, Master, MELODIC_PRESETS, Note, PRESET_DEFAULTS, Project, Section, Sidechain, Sound, Track, new_track, uid
+from .domain import Action, Automation, Clip, Kit, Master, MELODIC_PRESETS, Note, PRESET_DEFAULTS, Project, Section, Sidechain, Sound, Track, new_track, uid
 from .musical import character as character_module
 from .musical import design as design_module
 from .musical import drums as drums_module
@@ -35,9 +35,9 @@ def keys(params: dict, allowed: set[str]):
         raise EditError(f"Unsupported settings: {', '.join(sorted(unknown))}")
 
 
-NUMERIC_PARAMS = {"factor", "decay", "sustain", "filter_env", "filter_decay", "unison", "spread", "sub", "crush", "lfo_depth", "lfo_rate", "tempo", "seed", "density", "variation", "semitones", "start", "end", "grid", "swing", "humanize", "velocity", "cutoff", "resonance", "attack", "release", "reverb", "delay", "drive", "low", "mid", "high", "volume_db", "delta_db", "pan", "bars", "energy", "index", "ceiling", "compression", "audio_offset", "chorus", "flanger", "phaser", "autopan", "motion_rate", "width", "glide", "intensity", "span", "voices", "roll_from_bar", "octave", "cut_bars", "from_cutoff", "to_cutoff", "start_beat", "beats", "to_db", "amount", "degrees"}
+NUMERIC_PARAMS = {"kick_tune", "kick_decay", "kick_click", "snare_tone", "snare_decay", "clap_spread", "hat_tone", "hat_decay", "open_decay", "factor", "decay", "sustain", "filter_env", "filter_decay", "unison", "spread", "sub", "crush", "lfo_depth", "lfo_rate", "tempo", "seed", "density", "variation", "semitones", "start", "end", "grid", "swing", "humanize", "velocity", "cutoff", "resonance", "attack", "release", "reverb", "delay", "drive", "low", "mid", "high", "volume_db", "delta_db", "pan", "bars", "energy", "index", "ceiling", "compression", "audio_offset", "chorus", "flanger", "phaser", "autopan", "motion_rate", "width", "glide", "intensity", "span", "voices", "roll_from_bar", "octave", "cut_bars", "from_cutoff", "to_cutoff", "start_beat", "beats", "to_db", "amount", "degrees"}
 BOOLEAN_PARAMS = {"locked", "last_note", "mute", "solo", "crash", "fill", "roll", "riser", "keep_rhythm", "sweep", "impact", "accelerate"}
-TEXT_PARAMS = {"name", "role", "key", "scale", "pattern", "preset", "operation", "parameter", "note_id", "character", "kit", "from_track", "track", "layer_name", "source", "curve", "trigger", "shape", "problem", "colour", "against", "patch", "wave", "lfo_target"}
+TEXT_PARAMS = {"name", "role", "key", "scale", "pattern", "preset", "operation", "parameter", "note_id", "character", "kit", "from_track", "track", "layer_name", "source", "curve", "trigger", "shape", "problem", "colour", "against", "patch", "wave", "lfo_target", "machine"}
 
 
 def parameter_types(params: dict):
@@ -442,6 +442,24 @@ def apply_actions(original: Project, actions: list[Action], selection: dict | No
                 intensity = float(p.get("intensity", 0.6))
                 changes = character_module.character_changes(track.sound, word.lower(), intensity)
                 track.sound = Sound.model_validate({**track.sound.model_dump(), **changes})
+            elif action.kind == "kit_sound":
+                keys(p, set(Kit.model_fields) | {"machine"})
+                if track.role != "drums":
+                    raise EditError(f"{track.name} is not a drum track; drum voices only exist on one")
+                machine: dict = {}
+                if "machine" in p:
+                    name = p["machine"]
+                    if name not in design_module.DRUM_KITS:
+                        raise Unsupported(f"There is no '{name}' drum machine. RDX knows: {', '.join(design_module.DRUM_KITS)}.")
+                    machine = design_module.drum_settings(name)
+                    if findings is not None:
+                        findings.append(f"{track.name}: {name} — {design_module.DRUM_KITS[name].meaning}.")
+                explicit = {k: v for k, v in p.items() if k != "machine"}
+                base = Kit().model_dump() if machine else (track.kit or Kit()).model_dump()
+                try:
+                    track.kit = Kit.model_validate({**base, **machine, **explicit})
+                except ValueError as error:
+                    raise EditError(f"Those drum voice settings are out of range: {', '.join(sorted(explicit))}") from error
             elif action.kind == "sidechain":
                 keys(p, {"source", "amount", "attack", "release", "curve", "trigger", "shape", "operation"})
                 if p.get("operation") == "remove":

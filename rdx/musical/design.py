@@ -18,7 +18,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from ..domain import Sound
+from ..domain import Kit, Sound
 
 
 @dataclass(frozen=True)
@@ -145,3 +145,51 @@ def suits(name: str, role: str) -> bool:
 
 def describe_patch(name: str) -> str:
     return f"{name.replace('_', ' ')}: {PATCHES[name].meaning}"
+
+
+# --- drum voices -----------------------------------------------------------
+
+# The machines, as tunings rather than as patterns. `drums.py` decides where a
+# kick lands; these decide what it is. Keeping them apart is the point: a 909
+# pattern with an 808 kick is a real thing to want.
+DRUM_KITS: dict[str, Patch] = {
+    "909": Patch(
+        "short, clicky and punchy — the house and techno standard",
+        ("drums",),
+        {"kick_tune": 0, "kick_decay": 0.24, "kick_click": 0.03, "snare_tone": 1800, "snare_decay": 0.11,
+         "clap_spread": 1.0, "hat_tone": 9000, "hat_decay": 0.03, "open_decay": 0.3},
+    ),
+    "808": Patch(
+        "a long tuned boom with almost no click, and soft tops",
+        ("drums",),
+        {"kick_tune": -5, "kick_decay": 0.95, "kick_click": 0.09, "snare_tone": 1100, "snare_decay": 0.16,
+         "clap_spread": 1.4, "hat_tone": 7000, "hat_decay": 0.05, "open_decay": 0.5},
+    ),
+    "hard": Patch(
+        "a tight clicky kick and bright, short tops — nothing rings",
+        ("drums",),
+        {"kick_tune": 2, "kick_decay": 0.18, "kick_click": 0.015, "snare_tone": 2400, "snare_decay": 0.08,
+         "clap_spread": 0.7, "hat_tone": 11000, "hat_decay": 0.022, "open_decay": 0.2},
+    ),
+    "deep": Patch(
+        "a low, round kick with a long tail and dark hats",
+        ("drums",),
+        {"kick_tune": -4, "kick_decay": 0.6, "kick_click": 0.06, "snare_tone": 900, "snare_decay": 0.2,
+         "clap_spread": 1.6, "hat_tone": 5500, "hat_decay": 0.06, "open_decay": 0.6},
+    ),
+    "acoustic": Patch(
+        "a wider clap, a longer snare and open tops — less machine",
+        ("drums",),
+        {"kick_tune": -2, "kick_decay": 0.45, "kick_click": 0.055, "snare_tone": 1300, "snare_decay": 0.3,
+         "clap_spread": 2.2, "hat_tone": 7500, "hat_decay": 0.09, "open_decay": 0.8},
+    ),
+}
+
+
+def drum_settings(name: str) -> dict:
+    """The full voice set for a named drum machine, validated against the model."""
+    if name not in DRUM_KITS:
+        raise KeyError(name)
+    settings = dict(DRUM_KITS[name].settings)
+    Kit.model_validate(settings)
+    return settings

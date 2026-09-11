@@ -485,6 +485,47 @@ def intents() -> list[Intent]:
         ), refuse("I have not measured this mix yet. Analyse it in the mixer and I will tell you what is actually in it.")),
     ]
 
+    # Drum sound design: what the kit sounds like, not what it plays.
+    items += [
+        Intent("drums_909", (
+            "make the drums a 909",
+            "I want 909 drums",
+            "give me that classic house drum sound",
+            "punchy short drum sounds please",
+        ), lambda scene, rng: ([act("kit_sound", {"machine": "909"}, track="drums")], "")),
+        Intent("drums_808", (
+            "make the kick an 808",
+            "I want 808 drums",
+            "give me a long booming kick",
+            "that deep 808 sound on the drums",
+        ), lambda scene, rng: ([act("kit_sound", {"machine": "808"}, track="drums")], "")),
+        Intent("drums_hard", (
+            "make the drums harder",
+            "the drums need to hit harder and shorter",
+            "tighter, clickier drums",
+        ), lambda scene, rng: ([act("kit_sound", {"machine": "hard"}, track="drums")], "")),
+        Intent("kick_longer", (
+            "the kick is too short",
+            "let the kick ring out longer",
+            "give the kick a longer tail",
+        ), lambda scene, rng: ([act("kit_sound", {"kick_decay": rng.choice([0.55, 0.7, 0.9])}, track="drums")], "")),
+        Intent("kick_tune", (
+            "tune the kick down",
+            "the kick is pitched too high",
+            "drop the pitch of the kick",
+        ), lambda scene, rng: ([act("kit_sound", {"kick_tune": rng.choice([-2, -4, -5])}, track="drums")], "")),
+        Intent("hats_darker", (
+            "the hats are too bright",
+            "darken the hi-hats",
+            "the hats are piercing, tone them down",
+        ), lambda scene, rng: ([act("kit_sound", {"hat_tone": rng.choice([5500, 6500, 7000])}, track="drums")], "")),
+        Intent("clap_wider", (
+            "make the clap wider",
+            "the clap sounds like one person, I want a crowd",
+            "spread the clap out more",
+        ), lambda scene, rng: ([act("kit_sound", {"clap_spread": rng.choice([1.8, 2.2, 2.6])}, track="drums")], "")),
+    ]
+
     # Sound design: a named patch is a different request from an adjective.
     items += [
         Intent("patch_reese", (

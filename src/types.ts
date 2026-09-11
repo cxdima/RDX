@@ -64,6 +64,17 @@ export interface Automation {
   section_id: string;
   points: [number, number][];
 }
+export interface Kit {
+  kick_tune: number;
+  kick_decay: number;
+  kick_click: number;
+  snare_tone: number;
+  snare_decay: number;
+  clap_spread: number;
+  hat_tone: number;
+  hat_decay: number;
+  open_decay: number;
+}
 export interface Sidechain {
   /** The id of the track whose notes trigger the duck. */
   source: string;
@@ -85,6 +96,7 @@ export interface Track {
   solo: boolean;
   locked: boolean;
   sound: Sound;
+  kit: Kit | null;
   sidechain: Sidechain | null;
   clips: Clip[];
   automation: Automation[];

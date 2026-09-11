@@ -7,7 +7,7 @@ change disagree, this is the one the user sees.
 """
 from __future__ import annotations
 
-from ..domain import Project, Sidechain, Track
+from ..domain import Kit, Project, Sidechain, Track
 from .sidechain import depth_db, nearest_shape
 
 FIELDS = {
@@ -100,6 +100,12 @@ def track_changes(before: Track, after: Track, names: dict[str, str], tracks: di
         old, new = getattr(before, flag), getattr(after, flag)
         if old != new:
             parts.append(word if new else f"no longer {word}")
+    if (before.kit or Kit()) != (after.kit or Kit()) and after.kit:
+        for field in Kit.model_fields:
+            old, new = getattr(before.kit or Kit(), field), getattr(after.kit, field)
+            if abs(old - new) > 1e-6:
+                label = field.replace("_", " ")
+                parts.append(change(label, old, new, "Hz" if field.endswith("tone") else "s" if field.endswith("decay") or field.endswith("click") else "", 0 if field.endswith("tone") else 3))
     if before.sidechain != after.sidechain:
         parts.append(ducking(after.sidechain, tracks or {}) if after.sidechain else "ducking removed")
     old_clips = {c.section_id: c for c in before.clips}
