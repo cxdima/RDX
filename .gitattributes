@@ -1,0 +1,9 @@
+# Generated training data. It is committed on purpose — it is what makes a
+# training run reproducible — but it is machine-written and re-derivable from
+# rdx/dataset/, so a line-by-line diff of it is noise that buries the code.
+data/training/*.jsonl   -diff linguist-generated
+data/training/train.log -diff linguist-generated
+
+# Model weights and screenshots are binary in everything but name.
+*.safetensors binary
+docs/*.png    binary

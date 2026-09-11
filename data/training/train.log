@@ -3,21 +3,18 @@ Loading configuration file /Users/dmoiseenko/Development/RDX/data/training/train
 Loading pretrained model
 Loading datasets
 Training
-Trainable parameters: 0.730% (29.360M/4022.468M)
-Starting training..., iters: 1200
+Trainable parameters: 1.095% (44.040M/4022.468M)
+Starting training..., iters: 800
 
 Calculating loss...:   0%|          | 0/8 [00:00<?, ?it/s]
-Calculating loss...:  12%|█▎        | 1/8 [00:01<00:11,  1.60s/it]
-Calculating loss...:  25%|██▌       | 2/8 [00:03<00:09,  1.60s/it]
-Calculating loss...:  38%|███▊      | 3/8 [00:04<00:07,  1.58s/it]
-Calculating loss...:  50%|█████     | 4/8 [00:06<00:06,  1.58s/it]
-Calculating loss...:  62%|██████▎   | 5/8 [00:07<00:04,  1.56s/it]
-Calculating loss...:  75%|███████▌  | 6/8 [00:09<00:03,  1.56s/it]
-Calculating loss...:  88%|████████▊ | 7/8 [00:10<00:01,  1.56s/it]
-Calculating loss...: 100%|██████████| 8/8 [00:12<00:00,  1.56s/it]
-Calculating loss...: 100%|██████████| 8/8 [00:12<00:00,  1.57s/it]
-Iter 1: Val loss 5.699, Val took 12.565s
-Iter 20: Train loss 1.685, Learning Rate 1.652e-05, It/sec 0.157, Tokens/sec 9.272, Trained Tokens 1183, Peak mem 9.465 GB
-Iter 40: Train loss 0.480, Learning Rate 3.285e-05, It/sec 0.155, Tokens/sec 9.275, Trained Tokens 2382, Peak mem 9.465 GB
-Iter 60: Train loss 0.344, Learning Rate 4.918e-05, It/sec 0.148, Tokens/sec 8.596, Trained Tokens 3546, Peak mem 9.465 GB
-Iter 80: Train loss 0.307, Learning Rate 4.998e-05, It/sec 0.150, Tokens/sec 8.339, Trained Tokens 4658, Peak mem 9.465 GB
+Calculating loss...:  12%|█▎        | 1/8 [00:03<00:22,  3.27s/it]
+Calculating loss...:  25%|██▌       | 2/8 [00:06<00:19,  3.26s/it]
+Calculating loss...:  38%|███▊      | 3/8 [00:09<00:16,  3.26s/it]
+Calculating loss...:  50%|█████     | 4/8 [00:13<00:13,  3.26s/it]
+Calculating loss...:  62%|██████▎   | 5/8 [00:16<00:09,  3.26s/it]
+Calculating loss...:  75%|███████▌  | 6/8 [00:19<00:06,  3.26s/it]
+Calculating loss...:  88%|████████▊ | 7/8 [00:22<00:03,  3.26s/it]
+Calculating loss...: 100%|██████████| 8/8 [00:26<00:00,  3.26s/it]
+Calculating loss...: 100%|██████████| 8/8 [00:26<00:00,  3.26s/it]
+Iter 1: Val loss 5.528, Val took 26.101s
+Iter 20: Train loss 1.486, Learning Rate 1.968e-05, It/sec 0.077, Tokens/sec 8.506, Trained Tokens 2202, Peak mem 16.203 GB
