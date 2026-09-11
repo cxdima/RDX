@@ -33,9 +33,12 @@ test("studio playback, edits, history, exports and responsive views", async ({
     });
   expect(pixels).toBeGreaterThan(500);
   await page.getByRole("button", { name: "Play", exact: true }).click();
-  await expect(
-    page.getByRole("button", { name: "Stop playback" }),
-  ).toBeVisible();
+  // Starting playback builds every voice and generates reverb impulse
+  // responses, which takes real time on a loaded machine. This is not a
+  // rendering wait to be tuned down; it is how long starting audio takes.
+  await expect(page.getByRole("button", { name: "Stop playback" })).toBeVisible(
+    { timeout: 30_000 },
+  );
   await expect
     .poll(() =>
       page
