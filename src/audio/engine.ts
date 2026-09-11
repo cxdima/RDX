@@ -7,6 +7,17 @@ import { duckingPoints, sourceNotes, triggerBeats } from "./sidechain";
 
 type Disposable = { dispose(): unknown };
 
+/** Linear up to the knee, then eased into the ceiling so a peak is rounded
+ *  rather than sheared. Symmetric, monotonic, never above the ceiling. */
+function ceilingClip(x: number, ceiling: number): number {
+  const knee = ceiling * 0.8;
+  const magnitude = Math.abs(x);
+  if (magnitude <= knee) return x;
+  const over = (magnitude - knee) / (ceiling - knee);
+  const eased = knee + (ceiling - knee) * Math.tanh(over);
+  return Math.sign(x) * Math.min(ceiling, eased);
+}
+
 /** Where an automated parameter sits when no lane is driving it.
  *
  * This is what a section without automation has to put the parameter back to.
@@ -86,9 +97,20 @@ export class StudioAudio {
     const compressor = new Tone.Compressor(project.master.compression, ratio);
     const recovered = new Tone.Volume(makeup);
     const limiter = new Tone.Limiter(project.master.ceiling);
+    // Tone's limiter is a fast compressor, not a brickwall: on sub-heavy
+    // material a few hundred samples per record still went past full scale
+    // (psytrance 48, techno 338 on a rendered mix). A soft clip at the ceiling
+    // catches what the limiter lets through. It is a curve, so it rounds a
+    // peak rather than flattening it, and it is only ever touched by the
+    // overshoot — the rest of the signal passes through the linear region.
+    const safety = new Tone.WaveShaper(
+      (x) => ceilingClip(x, Tone.dbToGain(project.master.ceiling)),
+      4096,
+    );
+    safety.oversample = "4x";
     const meter = new Tone.Meter({ smoothing: 0.7 });
-    output.chain(compressor, recovered, limiter, meter, Tone.getDestination());
-    this.nodes.push(recovered);
+    output.chain(compressor, recovered, limiter, safety, meter, Tone.getDestination());
+    this.nodes.push(recovered, safety);
     this.master = output;
     this.outputMeter = meter;
     this.nodes.push(output, compressor, limiter, meter);

@@ -183,7 +183,7 @@ test("a finished record is loud enough to be a record, and does not clip", async
   // uses the real defaults from rdx/domain.py.
   const loud = {
     ...project(),
-    master: { volume_db: 6, ceiling: -1, compression: -18 },
+    master: { volume_db: 10, ceiling: -1, compression: -18 },
   };
   const measured = await page.evaluate(async (source) => {
     const blob = await window.rdx.audio.render(source as never);
@@ -206,5 +206,46 @@ test("a finished record is loud enough to be a record, and does not clip", async
   // Well above the -34 LUFS the purely-downward chain produced. A held note at
   // -6 dB through the whole chain has to arrive somewhere near full scale.
   expect(20 * Math.log10(measured.peak)).toBeGreaterThan(-12);
+  expect(errors).toEqual([]);
+});
+
+test("nothing gets past the ceiling, however hard the master is pushed", async ({
+  page,
+}) => {
+  const errors: string[] = [];
+  page.on("pageerror", (error) => errors.push(error.message));
+  await page.goto("/");
+  await expect(
+    page.getByRole("heading", { name: "Your session" }),
+  ).toBeVisible();
+
+  // Tone's limiter is a fast compressor, not a brickwall: on sub-heavy material
+  // a few hundred samples per record still went past full scale. A soft clip
+  // at the ceiling catches the overshoot. Pushed with +12 dB of master gain,
+  // the loudest thing the model allows, the output must still never exceed the
+  // ceiling — and must still be a signal, not a flat line.
+  const pushed = {
+    ...project(),
+    master: { volume_db: 12, ceiling: -1, compression: -18 },
+  };
+  const measured = await page.evaluate(async (source) => {
+    const blob = await window.rdx.audio.render(source as never);
+    const view = new DataView(await blob.arrayBuffer());
+    const total = (view.byteLength - 44) / 4;
+    let peak = 0;
+    let over = 0;
+    let sum = 0;
+    for (let i = 0; i < total; i++) {
+      const value = Math.abs(view.getInt16(44 + i * 4, true) / 32768);
+      peak = Math.max(peak, value);
+      if (value > 0.891) over++; // -1 dBFS is 0.891 linear
+      sum += value * value;
+    }
+    return { peak, over, rms: Math.sqrt(sum / total) };
+  }, pushed);
+
+  expect(measured.over).toBe(0);
+  expect(measured.peak).toBeLessThanOrEqual(0.892);
+  expect(measured.rms).toBeGreaterThan(0.1); // loud, not silenced
   expect(errors).toEqual([]);
 });

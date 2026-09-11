@@ -212,11 +212,12 @@ class Master(Model):
     # make a finished record quieter than it already was, and every rendered
     # record measured about -34 LUFS — roughly 20 dB below a normal one.
     #
-    # +6 is where a rendered drop lands at -13.9 LUFS with peaks at -1.4 dBFS,
-    # nothing clipped and 8.8 dB of crest left. +9 reaches -11.0 LUFS and clips
-    # 13,614 samples, which is the line a professional producer draws for mastering:
-    # as loud as you can get it without distorting.
-    volume_db: float = Field(default=6, ge=-30, le=12)
+    # +10 is where a rendered drop lands at -14 to -15 LUFS with the peak held
+    # at -1.1 dBFS by the soft clip after the limiter, nothing over the ceiling
+    # and 10-11 dB of crest left; a whole record integrates around -17. Set by
+    # measurement on the two extremes, trance and psytrance, after the sub was
+    # brought in line — before that, +9 clipped 13,614 samples.
+    volume_db: float = Field(default=10, ge=-30, le=12)
     ceiling: float = Field(default=-1, ge=-12, le=0)
     compression: float = Field(default=-18, ge=-60, le=0)
 
