@@ -4,6 +4,7 @@ The adapter directory comes from RDX_ADAPTER so a new version can be trained
 while the active one stays in place and protected.
 """
 import argparse
+import hashlib
 import json
 import os
 import re
@@ -12,7 +13,7 @@ import subprocess
 import sys
 import time
 
-from .model import ADAPTER, DATA, MODEL, ROOT
+from .model import ADAPTER, DATA, MODEL, ROOT, SYSTEM
 
 
 def longest_example(path) -> int:
@@ -117,7 +118,17 @@ def main(argv: list[str] | None = None):
     status.update(state="trained" if code == 0 else "failed", elapsed_seconds=round(time.time() - started), exit_code=code)
     save()
     if code == 0:
-        (ADAPTER / "training-record.json").write_text(json.dumps({"config": config, "status": status, "base": json.loads((MODEL / "rdx-source.json").read_text()), "dataset": dataset_report, "longest_example_tokens": longest}, indent=2))
+        (ADAPTER / "training-record.json").write_text(json.dumps({
+            "config": config,
+            "status": status,
+            "base": json.loads((MODEL / "rdx-source.json").read_text()),
+            "dataset": dataset_report,
+            "longest_example_tokens": longest,
+            # Every example embeds the system prompt, so an adapter trained
+            # against one prompt and used with another is quietly mismatched.
+            # promote.py refuses to activate an adapter whose prompt has moved.
+            "system_sha256": hashlib.sha256(SYSTEM.encode()).hexdigest(),
+        }, indent=2))
     sys.exit(code)
 
 
