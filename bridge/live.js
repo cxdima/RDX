@@ -2,6 +2,13 @@ autowatch = 1;
 inlets = 1;
 outlets = 2;
 
+// Reported in every poll so the studio knows which build of this file is
+// actually running in Max. autowatch does not reliably reload it — with Live
+// in the background it does not fire at all — and a stale script that looks
+// connected is the hardest kind of failure to see. Bump this whenever the
+// behaviour changes, and the studio will say when the device needs reloading.
+var DEVICE_VERSION = 2;
+
 var busy = false;
 var completed = {};
 var task = null;
@@ -35,12 +42,23 @@ function devices() {
         var listed = [];
         for (var d = 0; d < deviceIds.length; d++) {
             var device = api('id ' + deviceIds[d]);
+            // Parameter names are what a sound mapping has to be built from,
+            // and for a plugin they can only be discovered at runtime. Capped
+            // so a Set full of big devices cannot bloat a poll that runs every
+            // twelve seconds.
+            var parameterIds = ids(device.get('parameters'));
+            var parameters = [];
+            for (var q = 0; q < parameterIds.length && q < 48; q++) {
+                parameters.push(text(api('id ' + parameterIds[q]), 'name'));
+            }
             listed.push({
                 name: text(device, 'name'),
                 // PluginDevice means a VST or AU: RDX can drive its parameters
                 // but can never insert it, which is the whole template-Set idea.
                 plugin: text(device, 'class_name') === 'PluginDevice',
-                kind: text(device, 'class_display_name')
+                kind: text(device, 'class_display_name'),
+                parameter_count: parameterIds.length,
+                parameters: parameters
             });
         }
         summary.push({
@@ -95,6 +113,37 @@ function addNotes(clip, notes, length) {
     if (got.count >= notes.length) return {ok: true, count: got.count};
     return {ok: false, detail: 'Live kept ' + got.count + ' of ' + notes.length + (got.detail ? ' (' + got.detail + ')' : '')};
 }
+// Native Live instruments for RDX's roles. Only native devices can be
+// inserted — plugins cannot, whatever the user owns — so this is deliberately
+// a short list of things every Live 12 Suite install has.
+var INSTRUMENTS = {drums: 'Drum Rack', bass: 'Wavetable', chords: 'Wavetable', lead: 'Wavetable', pad: 'Wavetable'};
+
+function addInstrument(track, role) {
+    // insert_device arrived in Live 12.3 and its exact call shape is not
+    // something to assume, so both documented forms are tried and the result
+    // is reported rather than trusted. An instrument is a bonus on top of the
+    // transfer; failing to add one must never lose the notes.
+    var wanted = INSTRUMENTS[role];
+    if (!wanted) return 'no instrument for ' + role;
+    var before = ids(track.get('devices')).length;
+    var attempts = [];
+    var forms = [
+        function () { track.call('insert_device', wanted, -1); },
+        function () { track.call('insert_device', wanted); }
+    ];
+    for (var i = 0; i < forms.length; i++) {
+        try {
+            forms[i]();
+        } catch (error) {
+            attempts.push(error.message);
+            continue;
+        }
+        if (ids(track.get('devices')).length > before) return wanted;
+        attempts.push('form ' + (i + 1) + ' added nothing');
+    }
+    return 'no instrument (' + attempts.join('; ') + ')';
+}
+
 function state() {
     var song = api('live_set');
     if (!Number(song.id)) throw new Error('Open this device inside Ableton Live');
@@ -115,7 +164,7 @@ function state() {
         try { scanned = devices(); } catch (error) { scanned = null; }
         pollsSinceScan = 0;
     }
-    return {tempo:number(song, 'tempo'), has_content:content, arrangement_end:end, track_count:tracks.length, playing:!!number(song, 'is_playing'), busy:busy, tracks:scanned};
+    return {tempo:number(song, 'tempo'), has_content:content, arrangement_end:end, track_count:tracks.length, playing:!!number(song, 'is_playing'), busy:busy, tracks:scanned, device_version:DEVICE_VERSION};
 }
 function snapshot() {
     try {outlet(0, 'state', JSON.stringify(state()));}
@@ -136,6 +185,7 @@ function command(filename) {
     var index = 0;
     var start = 0;
     var tasks = [];
+    var instruments = [];
     function finish(ok, message) {
         if (undoOpen) {song.call('end_undo_step');undoOpen = false;}
         busy = false;
@@ -180,6 +230,7 @@ function command(filename) {
             });
             if (source.role !== 'audio') tasks.push(function() {
                 var track = makeTrack(source, true);
+                instruments.push(source.name + ': ' + addInstrument(track, source.role));
                 var offset = start;
                 job.project.sections.forEach(function(section) {
                     var sourceClip = source.clips.filter(function(c) {return c.section_id === section.id;})[0];
@@ -208,7 +259,7 @@ function command(filename) {
                 } else {
                     api('live_app view').call('show_view', 'Arranger');
                     song.set('current_song_time', start);
-                    finish(true, 'Added ' + created.length + ' tracks at bar ' + (start / 4 + 1) + '. MIDI source tracks are muted; sounds and automation are in the audio stems.');
+                    finish(true, 'Added ' + created.length + ' tracks at bar ' + (start / 4 + 1) + '. MIDI source tracks are muted; sounds and automation are in the audio stems. Instruments: ' + instruments.join(' | '));
                 }
             } catch (error) {finish(false, 'Transfer stopped: ' + error.message + '. ' + created.length + ' new RDX tracks remain. Live Undo can remove this transfer.');}
         }, this);

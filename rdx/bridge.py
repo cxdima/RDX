@@ -6,6 +6,11 @@ import time
 
 from .domain import Project, uid
 
+# The build of bridge/live.js this studio expects. Max does not reliably reload
+# that file, so a device can be connected and running an older script; when
+# these disagree the device needs dragging out of Live and back in.
+DEVICE_VERSION = 2
+
 
 class Bridge:
     def __init__(self):
@@ -21,7 +26,7 @@ class Bridge:
             if self.pending and time.time() - self.pending["created"] > 180:
                 self.result = {"id": self.pending["id"], "ok": False, "message": "Transfer confirmation timed out. Check Live before sending again; a partial transfer may exist."}
                 self.pending = None
-            return {"connected": time.time() - self.last_seen < 10, "live": self.live, "pending": self.pending is not None, "result": self.result}
+            return {"connected": time.time() - self.last_seen < 10, "live": self.live, "pending": self.pending is not None, "result": self.result, "device_version": self.live.get("device_version"), "device_current": DEVICE_VERSION}
 
     def poll(self, state):
         with self.lock:
