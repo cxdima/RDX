@@ -3,6 +3,7 @@ import type { Sound } from "../types";
 
 /** The three scheduling methods automation needs, shared by Param and Signal. */
 export type Automatable = {
+  readonly value: number | string;
   cancelScheduledValues(time: Tone.Unit.Time): unknown;
   setValueAtTime(value: number, time: Tone.Unit.Time): unknown;
   linearRampToValueAtTime(value: number, time: Tone.Unit.Time): unknown;
@@ -173,7 +174,19 @@ export function createChain(
     const widener = keep(
       new Tone.StereoWidener({ width: 0.5 + sound.width * 0.5 }),
     );
-    widthParam = widener.width;
+    // RDX's zero means unchanged stereo; Tone's zero means mid only.
+    // Automation uses the same units as the static sound control.
+    widthParam = {
+      get value() {
+        return (widener.width.value - 0.5) * 2;
+      },
+      cancelScheduledValues: (time) =>
+        widener.width.cancelScheduledValues(time),
+      setValueAtTime: (value, time) =>
+        widener.width.setValueAtTime(0.5 + value * 0.5, time),
+      linearRampToValueAtTime: (value, time) =>
+        widener.width.linearRampToValueAtTime(0.5 + value * 0.5, time),
+    };
     stages.push(widener);
   }
 

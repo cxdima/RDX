@@ -249,3 +249,149 @@ test("nothing gets past the ceiling, however hard the master is pushed", async (
   expect(measured.rms).toBeGreaterThan(0.1); // loud, not silenced
   expect(errors).toEqual([]);
 });
+
+test("a late automation lane starts from this section's resting level", async ({
+  page,
+}) => {
+  await page.goto("/");
+  const source = project();
+  source.tracks[0].automation.push({
+    id: "aut000000002",
+    section_id: source.sections[1].id,
+    parameter: "volume_db",
+    points: [
+      [3, -6],
+      [4, -60],
+    ],
+  });
+  const level = await page.evaluate(async (source) => {
+    const view = new DataView(
+      await (await window.rdx.audio.render(source as never)).arrayBuffer(),
+    );
+    const rate = view.getUint32(24, true);
+    let power = 0;
+    for (let i = Math.round(2.3 * rate); i < Math.round(2.8 * rate); i++) {
+      power += (view.getInt16(44 + i * 4, true) / 32768) ** 2;
+    }
+    return Math.sqrt(power / (rate * 0.5));
+  }, source);
+  expect(level).toBeGreaterThan(0.03);
+});
+
+test("automation in a later section does not change the resting sound", async ({
+  page,
+}) => {
+  await page.goto("/");
+  for (const [parameter, value] of [
+    ["width", 0.4],
+    ["drive", 0.1],
+    ["crush", 0.8],
+  ] as const) {
+    const source = project();
+    source.tracks[0].automation = [];
+    source.tracks[0].sound[parameter] = value;
+    const difference = await page.evaluate(
+      async ({ source, parameter }) => {
+        const render = async () =>
+          new DataView(
+            await (
+              await window.rdx.audio.render(source as never)
+            ).arrayBuffer(),
+          );
+        const plain = await render();
+        source.tracks[0].automation.push({
+          id: "aut000000002",
+          section_id: source.sections[1].id,
+          parameter,
+          points: [
+            [0, 0],
+            [4, 0],
+          ],
+        });
+        const automated = await render();
+        const rate = plain.getUint32(24, true);
+        let delta = 0;
+        let power = 0;
+        for (let i = Math.round(0.3 * rate); i < Math.round(rate); i++) {
+          const a = plain.getInt16(44 + i * 4, true);
+          const b = automated.getInt16(44 + i * 4, true);
+          delta += (a - b) ** 2;
+          power += a ** 2;
+        }
+        return Math.sqrt(delta / power);
+      },
+      { source, parameter },
+    );
+    expect(
+      difference,
+      `${parameter} changed the unautomated section`,
+    ).toBeLessThan(0.002);
+  }
+});
+
+test("drum transients stay below the chosen sample ceiling", async ({
+  page,
+}) => {
+  await page.goto("/");
+  const source = project();
+  source.master = { volume_db: 12, ceiling: -6, compression: -18 };
+  source.tracks[0].role = "drums";
+  source.tracks[0].automation = [];
+  source.tracks[0].clips.forEach((clip) => {
+    clip.notes = [0, 1, 2, 3].flatMap((start) =>
+      [36, 38, 42].map((pitch) => ({
+        id: `n${start}${pitch}`,
+        pitch,
+        start,
+        duration: 0.1,
+        velocity: 127,
+      })),
+    );
+  });
+  const peak = await page.evaluate(async (source) => {
+    const view = new DataView(
+      await (await window.rdx.audio.render(source as never)).arrayBuffer(),
+    );
+    let peak = 0;
+    for (let offset = 44; offset < view.byteLength; offset += 2)
+      peak = Math.max(peak, Math.abs(view.getInt16(offset, true)) / 32768);
+    return peak;
+  }, source);
+  expect(peak).toBeGreaterThan(0.4);
+  expect(peak).toBeLessThanOrEqual(10 ** (-6 / 20) + 1 / 32768);
+});
+
+test("a failed audio export does not break playback of another project", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await page.route("**/api/audio/abcdef123456/wave", (route) =>
+    route.fulfill({ status: 404, body: "missing" }),
+  );
+  const failed = await page.evaluate(async (source) => {
+    const clip = source.tracks[0].clips[0];
+    const broken = {
+      ...source,
+      tracks: [
+        {
+          ...source.tracks[0],
+          role: "audio",
+          clips: [{ ...clip, audio_id: "abcdef123456", notes: [] }],
+        },
+      ],
+    };
+    let failed = false;
+    try {
+      await window.rdx.audio.render(broken as never);
+    } catch {
+      failed = true;
+    }
+    await window.rdx.audio.play(source as never, source.sections[0].id, false);
+    return failed;
+  }, project());
+  expect(failed).toBe(true);
+  await expect
+    .poll(() => page.evaluate(() => window.rdx.audio.seconds))
+    .toBeGreaterThan(0.1);
+  await page.evaluate(() => window.rdx.audio.stop());
+});

@@ -1,7 +1,7 @@
 import * as Tone from "tone";
 import type { Project, Track } from "../types";
 import { createKit } from "./drums";
-import { createChain, ready } from "./effects";
+import { createChain, ready, type Chain } from "./effects";
 import { createVoice } from "./instruments";
 import { duckingPoints, sourceNotes, triggerBeats } from "./sidechain";
 
@@ -23,10 +23,16 @@ function ceilingClip(x: number, ceiling: number): number {
  * This is what a section without automation has to put the parameter back to.
  * Every name here is in AUTOMATION_RANGES in rdx/domain.py; two of them live on
  * the channel and the rest are ordinary sound settings. */
-function baseValue(track: Track, parameter: string): number | undefined {
+function baseValue(
+  track: Track,
+  parameter: string,
+  chain: Chain,
+): number | undefined {
   if (parameter === "volume_db") return track.volume_db;
   if (parameter === "pan") return track.pan;
-  const value = (track.sound as unknown as Record<string, unknown>)[parameter];
+  // Some controls configure a processor and its wet mix separately (drive,
+  // crush). Restore the actual initialized signal, not the recipe's amount.
+  const value = chain.params[parameter as keyof Chain["params"]]?.value;
   return typeof value === "number" ? value : undefined;
 }
 
@@ -42,6 +48,10 @@ export class StudioAudio {
     this.generation++;
     Tone.getTransport().stop();
     Tone.getTransport().cancel();
+    this.releaseNodes();
+  }
+
+  private releaseNodes() {
     for (const node of this.nodes.reverse()) node.dispose();
     this.nodes = [];
     this.channels.clear();
@@ -119,16 +129,24 @@ export class StudioAudio {
       4096,
     );
     safety.oversample = "4x";
+    // The oversampling filter can ring beyond the curve's ceiling on a drum
+    // transient. Bound the final samples after downsampling as well.
+    const ceiling = Tone.dbToGain(project.master.ceiling);
+    const sampleGuard = new Tone.WaveShaper(
+      (x) => Math.max(-ceiling, Math.min(ceiling, x)),
+      4097,
+    );
     const meter = new Tone.Meter({ smoothing: 0.7 });
     output.chain(
       compressor,
       recovered,
       limiter,
       safety,
+      sampleGuard,
       meter,
       Tone.getDestination(),
     );
-    this.nodes.push(recovered, safety);
+    this.nodes.push(recovered, safety, sampleGuard);
     this.master = output;
     this.outputMeter = meter;
     this.nodes.push(output, compressor, limiter, meter);
@@ -259,7 +277,7 @@ export class StudioAudio {
               ? channel.pan
               : chain.params[parameterName as keyof typeof chain.params];
         if (!parameter) continue;
-        const resting = baseValue(track, parameterName);
+        const resting = baseValue(track, parameterName, chain);
         const lanes = new Map(
           track.automation
             .filter((lane) => lane.parameter === parameterName)
@@ -270,9 +288,9 @@ export class StudioAudio {
           transport.schedule(
             (time) => {
               parameter.cancelScheduledValues(time);
+              if (resting !== undefined && (!lane || lane.points[0][0] > 0))
+                parameter.setValueAtTime(resting, time);
               if (!lane) {
-                if (resting !== undefined)
-                  parameter.setValueAtTime(resting, time);
                 return;
               }
               lane.points.forEach(([beat, value], index) => {
@@ -296,7 +314,12 @@ export class StudioAudio {
     await Tone.start();
     this.dispose();
     const generation = this.generation;
-    await this.build(project);
+    try {
+      await this.build(project);
+    } catch (error) {
+      if (generation === this.generation) this.dispose();
+      throw error;
+    }
     if (generation !== this.generation) return;
     let start = 0;
     for (const section of project.sections) {
@@ -330,43 +353,60 @@ export class StudioAudio {
         project.tempo +
       3;
     const renderer = new StudioAudio();
-    const buffer = await Tone.Offline(
-      async ({ transport }) => {
-        await renderer.build(project);
-        transport.loop = false;
-        transport.start(0);
-      },
-      seconds,
-      2,
-      44100,
-    );
-    const channels = [buffer.getChannelData(0), buffer.getChannelData(1)];
-    const bytes = new ArrayBuffer(44 + channels[0].length * 4);
-    const view = new DataView(bytes);
-    const text = (offset: number, value: string) =>
-      [...value].forEach((c, i) => view.setUint8(offset + i, c.charCodeAt(0)));
-    text(0, "RIFF");
-    view.setUint32(4, bytes.byteLength - 8, true);
-    text(8, "WAVE");
-    text(12, "fmt ");
-    view.setUint32(16, 16, true);
-    view.setUint16(20, 1, true);
-    view.setUint16(22, 2, true);
-    view.setUint32(24, 44100, true);
-    view.setUint32(28, 176400, true);
-    view.setUint16(32, 4, true);
-    view.setUint16(34, 16, true);
-    text(36, "data");
-    view.setUint32(40, bytes.byteLength - 44, true);
-    for (let i = 0; i < channels[0].length; i++)
-      for (let c = 0; c < 2; c++)
-        view.setInt16(
-          44 + i * 4 + c * 2,
-          Math.max(-1, Math.min(1, channels[c][i])) * 32767,
-          true,
+    const originalContext = Tone.getContext();
+    let renderContext: Tone.OfflineContext | undefined;
+    let buffer: Tone.ToneAudioBuffer | undefined;
+    try {
+      buffer = await Tone.Offline(
+        async (context) => {
+          renderContext = context;
+          const { transport } = context;
+          await renderer.build(project);
+          transport.loop = false;
+          transport.start(0);
+        },
+        seconds,
+        2,
+        44100,
+      );
+      const channels = [buffer.getChannelData(0), buffer.getChannelData(1)];
+      const bytes = new ArrayBuffer(44 + channels[0].length * 4);
+      const view = new DataView(bytes);
+      const text = (offset: number, value: string) =>
+        [...value].forEach((c, i) =>
+          view.setUint8(offset + i, c.charCodeAt(0)),
         );
-    for (const node of renderer.nodes.reverse()) node.dispose();
-    return new Blob([bytes], { type: "audio/wav" });
+      text(0, "RIFF");
+      view.setUint32(4, bytes.byteLength - 8, true);
+      text(8, "WAVE");
+      text(12, "fmt ");
+      view.setUint32(16, 16, true);
+      view.setUint16(20, 1, true);
+      view.setUint16(22, 2, true);
+      view.setUint32(24, 44100, true);
+      view.setUint32(28, 176400, true);
+      view.setUint16(32, 4, true);
+      view.setUint16(34, 16, true);
+      text(36, "data");
+      view.setUint32(40, bytes.byteLength - 44, true);
+      for (let i = 0; i < channels[0].length; i++)
+        for (let c = 0; c < 2; c++)
+          view.setInt16(
+            44 + i * 4 + c * 2,
+            Math.max(-1, Math.min(1, channels[c][i])) * 32767,
+            true,
+          );
+      return new Blob([bytes], { type: "audio/wav" });
+    } finally {
+      // Tone.Offline does not restore its global context when its build
+      // callback rejects. A missing recording otherwise strands the next
+      // project's playback on an offline transport that never advances.
+      if (Tone.getContext() === renderContext) Tone.setContext(originalContext);
+      renderer.releaseNodes();
+      renderContext?.transport.cancel();
+      renderContext?.dispose();
+      buffer?.dispose();
+    }
   }
 }
 
