@@ -58,3 +58,11 @@ data/training/*
 !data/training/adapter-evaluation.json
 !data/training/train.yaml
 !data/training/train.log
+
+# Working notes between the owner and coding agents. They read like a
+# kitchen conversation, and they are not part of the product.
+RDX_HANDOFF.md
+RDX_PLAN.md
+# Reference material the owner bought, and anything personal in the root.
+*.pdf
+linkedin.txt

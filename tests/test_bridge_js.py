@@ -8,7 +8,7 @@ This runs it in Node against a stubbed Live API. It proves the logic: that a
 Set is read into the shape RDX expects, that a name containing spaces survives
 Max splitting it into symbols, that a plugin is recognised as one, and that a
 device scan failing does not take the whole poll down with it. It cannot prove
-how real Live behaves — that is what the notes in RDX_PLAN.md are for.
+how real Live behaves — that is what the caveats in README.md are for.
 """
 from __future__ import annotations
 

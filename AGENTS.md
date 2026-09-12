@@ -78,8 +78,9 @@ asserts the musical result. Do not push it into the prompt and hope.
 
 Most of `rdx/musical/` is reasoning that has been written down so it can be
 argued with. Some of it has a source, and where it does, the test says so —
-`a dance-music course` in the repo root is a producer's masterclass
-guide, and these rules are taken from it directly:
+some rules below are informed by a professional masterclass on dance music —
+its arrangement and mixing *techniques*, reasoned into RDX's own code and cited
+so they can be looked up. The guide itself is not part of this repository:
 
 - **A crowd cannot dance unless it knows where the beat is**, so something
   rhythmic keeps running whenever the kick drops out. This is why a breakdown
@@ -230,8 +231,8 @@ against a copy; the project only changes when the user accepts via
   round trips, proposals and bridge auth.
 - `tests/browser/` is Playwright against the real built app. Some of it renders
   audio and measures it, which is the only way to catch a fault that leaves the
-  project correct and the record silent — see the automation-scope bug in
-  `RDX_HANDOFF.md`. **A musical change is not verified until something has
+  project correct and the record silent — see the automation-scope bug
+  recorded below under "Where the musical claims come from". **A musical change is not verified until something has
   listened to it**; `npm run render` writes whole records to
   `artifacts/renders/` for exactly that, and `npm run render:drop` plus
   `npm run measure` is the one-minute loop the master chain and the mix balance
@@ -243,7 +244,7 @@ against a copy; the project only changes when the user accepts via
 
 ## Honesty rules for docs
 
-`README.md`, `RDX_PLAN.md` and `RDX_HANDOFF.md` deliberately separate what is
+`README.md` deliberately separates what is
 **implemented and verified** from what is **proposed**. Preserve that. Do not
 upgrade "built" to "working" without evidence, and record known failures rather
 than quietly dropping them.

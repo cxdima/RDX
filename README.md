@@ -273,7 +273,7 @@ pinned to a fixed revision.
 **Adapter v4 is the active one.** Its recorded score is **29/32** against the base model's
 **11/32** on held-out benchmark v5, improving or holding every category
 and regressing none — including 7/7 on the worked example in
-[RDX_PLAN.md](RDX_PLAN.md). It is approved in `data/models/rdx-v4/approved.json`
+the worked example. It is approved in `data/models/rdx-v4/approved.json`
 alongside the measurement that justified it.
 
 **Its weights do not ship with the repository.** The 190 MB stays local; its
@@ -392,9 +392,7 @@ be settled by listening. New musical capability needs a test proving the musical
 result — a drum pattern test should assert the notes land where a producer
 expects them.
 
-See [AGENTS.md](AGENTS.md) for the working guide, [RDX_PLAN.md](RDX_PLAN.md) for
-the architecture and what comes next, and [RDX_HANDOFF.md](RDX_HANDOFF.md) for
-the project's direction.
+See [AGENTS.md](AGENTS.md) for the working guide.
 
 ## License
 
