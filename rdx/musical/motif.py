@@ -14,9 +14,8 @@ So a melody here is three decisions a producer actually makes:
   a **form**   what happens to the idea across eight bars: stated, repeated,
                sequenced up, left open as a question, lifted to a peak, resolved
 
-and one rule underneath all three: **a note on a whole beat is a chord tone.**
-That single constraint is most of the difference between a line that sits inside
-the harmony and one that argues with it.
+and one rule underneath all three: notes on beats one and three move to a
+nearby chord tone, within two semitones. Passing notes keep their shape.
 
 Everything is expressed in scale degrees relative to the chord that is sounding,
 so a melody cannot leave the key and cannot drift off the progression. Positions
@@ -157,9 +156,11 @@ def pitch_at(degree: int, key: str, scale: str, low: int) -> int:
     return base + 12 * octave + steps[within]
 
 
-def chord_tone(pitch: int, chord: object) -> int:
+def chord_tone(pitch: int, chord: object, allowed: set[int] | None = None) -> int:
     """The nearest pitch belonging to the chord, so strong beats land inside it."""
     classes = getattr(chord, "pitch_classes", None)
+    if classes and allowed is not None:
+        classes = set(classes) & allowed
     if not classes or pitch % 12 in classes:
         return pitch
     # Only candidates that actually belong to the chord. Taking the nearest
@@ -237,6 +238,8 @@ def line(
         raise ValueError("Density must be above zero and at most one")
     if anchor not in {"key", "chord"}:
         raise ValueError("A melody is anchored either to the key or to the chord")
+    if not 0 <= low < high <= 127:
+        raise ValueError("The melody register is outside the playable range")
 
     rhythm, figure, plan = CELLS[cell], SHAPES[shape], FORMS[form]
     keep = thinned(rhythm, density)
@@ -286,7 +289,7 @@ def line(
                     # counted from the bottom of the range.
                     degree = 7 * round((home + octaves * 7) / 7)
                     hold = 4 - rhythm.hits[hit]          # and it rings out the bar
-            placed.append(Placed(bar, development, start, degree, hold, weight(rhythm.hits[hit]) == 3, chord))
+            placed.append(Placed(bar, development, start, degree, hold, weight(rhythm.hits[hit]) == 3, chord_at(entries, start)))
 
     lift(placed)
     return render(placed, key, scale, low, high, velocity, length)
@@ -311,9 +314,10 @@ def lift(placed: list[Placed]) -> None:
 
 def render(placed: list[Placed], key: str, scale: str, low: int, high: int, velocity: int, length: float) -> list[Note]:
     pitches = []
+    allowed = {(PITCH_CLASSES.index(key) + step) % 12 for step in SCALE_STEPS[scale]}
     for note in placed:
         pitch = pitch_at(note.degree, key, scale, low)
-        pitches.append(chord_tone(pitch, note.chord) if note.strong else pitch)
+        pitches.append(chord_tone(pitch, note.chord, allowed) if note.strong else pitch)
     # Move the phrase as one thing. Folding notes into range one at a time drops
     # single notes an octave and takes the shape apart — the climb that was the
     # point of the phrase turns into a jump downwards.
@@ -323,6 +327,8 @@ def render(placed: list[Placed], key: str, scale: str, low: int, high: int, velo
             shift -= 12
         while min(pitches) + shift < low and max(pitches) + shift + 12 <= high:
             shift += 12
+        if min(pitches) + shift < low or max(pitches) + shift > high:
+            raise ValueError("The melody does not fit that register. Widen the range so its shape can stay intact.")
     notes: list[Note] = []
     for note, raw in zip(placed, pitches):
         pitch = raw + shift
@@ -330,7 +336,7 @@ def render(placed: list[Placed], key: str, scale: str, low: int, high: int, velo
         # player phrases it without being asked to.
         accent = (10 if abs(note.start % 4) < 1e-9 else 0) + min(12, max(-6, (pitch - low) // 3))
         notes.append(Note(
-            pitch=max(0, min(127, pitch)),
+            pitch=pitch,
             start=round(note.start, 4),
             duration=round(min(note.hold, length - note.start), 4),
             velocity=max(1, min(127, velocity + accent)),

@@ -204,3 +204,43 @@ def test_every_cell_and_form_works_at_every_section_length(bars):
                 assert note.start + note.duration <= bars * 4 + 1e-6, f"{cell}/{form} overruns"
                 assert 0 <= note.pitch <= 127
                 assert note.duration > 0
+
+
+@pytest.mark.parametrize("low,high", [(60, 65), (120, 127), (0, 8), (90, 60), (-1, 88), (60, 128)])
+def test_an_impossible_register_is_refused_without_clipping_the_melody(low, high):
+    # Clamping to MIDI 127 turned high C# major phrases into G naturals.
+    # Refusal preserves the idea instead of silently breaking its key or shape.
+    from rdx.domain import Action
+    from rdx.engine import EditError, apply_actions, starter_project
+
+    project = starter_project()
+    project.key, project.scale = "C#", "major"
+    before = project.model_dump()
+    with pytest.raises(EditError, match="register"):
+        apply_actions(project, [Action(kind="melody", track="lead", section="Main", params={
+            "shape": "climb", "progression": "trance", "low": low, "high": high,
+        })])
+    assert project.model_dump() == before
+
+
+@pytest.mark.parametrize("key", PITCH_CLASSES)
+@pytest.mark.parametrize("low,high", [(0, 36), (48, 84), (91, 127)])
+def test_register_placement_keeps_every_pitch_in_range_and_in_key(key, low, high):
+    notes = phrase(key=key, scale="major", entries=harmony.named("trance", 8, key, "major"), low=low, high=high)
+    allowed = {(PITCH_CLASSES.index(key) + step) % 12 for step in SCALE_STEPS["major"]}
+    assert all(low <= n.pitch <= high and n.pitch % 12 in allowed for n in notes)
+
+
+def test_chord_snapping_follows_a_change_inside_the_bar():
+    entries = harmony.from_degrees(harmony.parse_progression("i-VII"), 1, "D", "minor", span=2)
+    notes = phrase(cell="stab", shape="hover", form="loop", entries=entries, bars=1, key="D", scale="minor")
+    assert [n.start for n in notes] == [0, 2]
+    assert all(n.pitch % 12 in motif.chord_at(entries, n.start).pitch_classes for n in notes)
+
+
+def test_borrowed_harmony_cannot_snap_a_melody_out_of_its_key():
+    # E major is a real borrowed dominant in A minor. Its G# must not silently
+    # replace the melody's A when this generator promises the project scale.
+    entries = [(0, 4, harmony.Chord(4, 4, "major"))]
+    notes = phrase(cell="stab", shape="hover", form="loop", entries=entries, bars=1)
+    assert all(n.pitch % 12 in {9, 11, 0, 2, 4, 5, 7} for n in notes)
