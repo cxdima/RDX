@@ -495,6 +495,9 @@ def intents() -> list[Intent]:
             "what's wrong with my mix",
             "tell me what needs fixing in the mix",
             "how does the mix look",
+            "something is wrong with the mix, sort it out",
+            "the whole thing sounds off, can you fix the mix",
+            "clean up the mix for me",
         ), refuse("I have not measured this mix yet. Analyse it in the mixer and I will tell you what is actually in it.")),
     ]
 
@@ -600,10 +603,10 @@ def intents() -> list[Intent]:
             "I want sixteenths rolling into a held note",
             "make the lead psytrance style",
         ), lambda scene, rng: ([act("melody", {"cell": "roll", "shape": "hook", "form": "driving", "anchor": "chord"}, track="lead", section="selected")], "")),
-        Intent("melody_climb", (
-            "the melody should climb through the section",
-            "make the lead build towards the end",
-            "I want the melody to keep rising",
+        Intent("melody_rising_new", (
+            "write me a new lead that keeps rising through the section",
+            "compose a melody that climbs all the way to the drop",
+            "I want a fresh rising melody on the lead",
         ), lambda scene, rng: ([act("melody", {"shape": "ascent", "form": "rising"}, track="lead", section="selected")], "")),
         Intent("melody_repetitive", (
             "the melody is too repetitive",
@@ -901,6 +904,10 @@ def intents() -> list[Intent]:
         Intent("refuse_plugin", (
             "load Serum on the lead",
             "use my Sylenth preset",
+            "load Serum on the lead and use my preset",
+            "put Sylenth on the chords",
+            "open Massive on this track and pick a pluck",
+            "can you use my Nexus preset here",
             "open a plugin for this sound",
         ), refuse("RDX cannot host plugins. Its own instruments are supersaw, saw, pluck, sine, sub, pad, strings, choir, bell, fm and noise.")),
         Intent("refuse_real_instrument", (
