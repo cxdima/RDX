@@ -8,7 +8,17 @@ const vm = require("node:vm");
 
 const mode = process.argv[2];
 const input = JSON.parse(fs.readFileSync(process.argv[3], "utf8"));
-const set = mode === "--set" ? input : { id: 1, tempo: 124, is_playing: 0, tracks: [], track_objects: [], byId: {} };
+const set =
+  mode === "--set"
+    ? input
+    : {
+        id: 1,
+        tempo: 124,
+        is_playing: 0,
+        tracks: [],
+        track_objects: [],
+        byId: {},
+      };
 
 /** Max returns every property as a list, and splits symbols on spaces. */
 function asList(value) {
@@ -21,6 +31,9 @@ function asList(value) {
 // Live's process, and it is that count — not this harness's own speed — that
 // decides whether the device is a burden on a machine trying to make music.
 const cost = { built: 0, reads: 0 };
+const writes = [];
+const scheduled = [];
+const nextId = () => Math.max(1, ...Object.keys(set.byId).map(Number)) + 1;
 
 class FakeLiveAPI {
   constructor(_callback, pathOrId) {
@@ -42,21 +55,51 @@ class FakeLiveAPI {
       return value.flatMap((id) => ["id", id]);
     return asList(value);
   }
-  set() {}
-  call() {}
+  set(property, value) {
+    writes.push({ id: this.id, property, value });
+    this.node[property] = value;
+  }
+  call(name, ...args) {
+    writes.push({ id: this.id, call: name, args });
+    if (name === "create_audio_track") {
+      const id = nextId();
+      set.byId[id] = { id, arrangement_clips: [], clip_slots: [], devices: [] };
+      set.tracks.push(id);
+    } else if (name === "create_audio_clip") {
+      const id = nextId();
+      set.byId[id] = { id, end_time: args[1] + 8 };
+      this.node.arrangement_clips.push(id);
+    }
+  }
 }
 
 const captured = [];
 const context = {
   LiveAPI: FakeLiveAPI,
   Dict: class {
-    constructor() { this.name = "d1"; }
+    constructor() {
+      this.name = "d1";
+    }
     parse() {}
-    stringify() { return "{}"; }
+    stringify() {
+      return "{}";
+    }
     freepeer() {}
   },
-  Task: class { constructor(fn) { this.fn = fn; } schedule() {} cancel() {} },
-  File: class { constructor() { this.isopen = false; } },
+  Task: class {
+    constructor(fn) {
+      this.fn = fn;
+    }
+    schedule() {
+      scheduled.push(this.fn);
+    }
+    cancel() {}
+  },
+  File: class {
+    constructor() {
+      this.isopen = false;
+    }
+  },
   outlet: (index, ...rest) => captured.push([index, ...rest]),
   arrayfromargs: (...args) => args,
   JSON,
@@ -71,7 +114,10 @@ const context = {
   outlets: 2,
 };
 vm.createContext(context);
-vm.runInContext(fs.readFileSync(path.join(__dirname, "../../bridge/live.js"), "utf8"), context);
+vm.runInContext(
+  fs.readFileSync(path.join(__dirname, "../../bridge/live.js"), "utf8"),
+  context,
+);
 
 if (mode === "--notes") {
   // A clip that answers get_notes_extended with whatever the test scripted,
@@ -94,11 +140,32 @@ for (let i = 0; i < 26; i++) {
   context.snapshot();
   polls.push(cost.built + cost.reads - before);
 }
-const states = captured.filter(([index, kind]) => index === 0 && kind === "state");
+const states = captured.filter(
+  ([index, kind]) => index === 0 && kind === "state",
+);
 const errors = captured.filter(([index]) => index === 1);
-console.log(JSON.stringify({
-  polls: states.length,
-  cost: polls,
-  errors: errors.map((e) => e[1]),
-  state: states.length ? JSON.parse(states[states.length - 1][2]) : null,
-}));
+if (input.command) {
+  // Change Live *after* the cached sweep. command() must reread contents
+  // before deciding where to put even its first audio clip.
+  if (input.new_content) {
+    const id = nextId();
+    set.byId[id] = { id, end_time: input.new_content.end };
+    set.byId[set.tracks[0]].arrangement_clips.push(id);
+  }
+  context.read = () => input.command;
+  context.command("test-job.json");
+  for (let i = 0; scheduled.length && i < 100; i++) scheduled.shift()();
+}
+const result = captured.find(
+  ([index, kind]) => index === 0 && kind === "result",
+);
+console.log(
+  JSON.stringify({
+    polls: states.length,
+    cost: polls,
+    errors: errors.map((e) => e[1]),
+    state: states.length ? JSON.parse(states[states.length - 1][2]) : null,
+    writes,
+    transfer: result ? JSON.parse(result[2]) : null,
+  }),
+);

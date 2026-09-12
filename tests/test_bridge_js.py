@@ -205,3 +205,33 @@ def test_the_set_reads_as_unscanned_until_the_first_sweep_finishes(tmp_path):
     state = run(a_set(tracks), tmp_path)
     assert state["state"]["scanned"] is False, "40 tracks take more than 26 polls to sweep"
     assert state["state"]["tracks"] is None
+
+
+def transfer_job(tempo=124):
+    return {"id": "review-job", "kind": "append_project", "project": {
+        "tempo": tempo, "revision": 1, "sections": [],
+        "tracks": [{"id": "source", "name": "Rendered", "role": "audio", "color": "#ffffff", "mute": False, "solo": False}],
+    }, "stems": {"source": "/test/stem.wav"}}
+
+
+def test_transfer_reads_new_content_after_the_cached_sweep(tmp_path):
+    live_set = a_set([{"name": "User recording", "midi": False}])
+    live_set["command"] = transfer_job()
+    live_set["new_content"] = {"end": 96.5}
+    result = run(live_set, tmp_path)
+    assert result["state"]["arrangement_end"] == 0, "the published sweep predates the recording"
+    assert result["transfer"]["ok"] is True
+    assert result["transfer"]["start_beat"] == 100
+    clips = [w for w in result["writes"] if w.get("call") == "create_audio_clip"]
+    assert clips[0]["args"] == ["/test/stem.wav", 100]
+    assert not any(w.get("property") == "tempo" for w in result["writes"])
+
+
+def test_content_added_after_the_sweep_prevents_a_tempo_overwrite(tmp_path):
+    live_set = a_set([{"name": "User recording", "midi": False}], tempo=120)
+    live_set["command"] = transfer_job(tempo=138)
+    live_set["new_content"] = {"end": 32}
+    result = run(live_set, tmp_path)
+    assert result["transfer"]["ok"] is False
+    assert "tempo" in result["transfer"]["message"]
+    assert result["writes"] == [], "refuse before changing the Set"
