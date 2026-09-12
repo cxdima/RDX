@@ -88,8 +88,8 @@ so they can be looked up. The guide itself is not part of this repository:
 - **Mastering is compression to bring the loudness up, then a limiter to get as
   loud as possible without distorting.** The master chain had no makeup stage,
   so it could only ever turn a record down; every render measured about -34 LUFS.
-- **A drop must not be quieter than the build that leads into it** — he names
-  this as a common and serious fault.
+- **A drop must not be quieter than the build that leads into it** — a
+  common and serious fault, and an easy one to introduce by accident.
 - **Tease the main melody** before stating it.
 - **Every kick has a top and a bottom**: transients that cut through, and low end
   that anchors. `Kit` carries both as `kick_click` and `kick_tune`/`kick_decay`.
