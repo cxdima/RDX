@@ -904,7 +904,7 @@ def intents() -> list[Intent]:
         Intent("refuse_plugin", (
             "load Serum on the lead",
             "use my Sylenth preset",
-            "load Serum on the lead and use my preset",
+            "put Serum on the lead with my own preset",
             "put Sylenth on the chords",
             "open Massive on this track and pick a pluck",
             "can you use my Nexus preset here",
