@@ -24,10 +24,10 @@ export default defineConfig({
     // studio.spec.ts fail looking for an element the edits had moved. A suite
     // whose result depends on how often it has been run is worse than none.
     command:
-      "rm -rf .cache/browser-test && .venv/bin/python -m uvicorn rdx.server:app --host 127.0.0.1 --port 8766",
+      "npm run build && rm -rf .cache/browser-test && .venv/bin/python -m uvicorn rdx.server:app --host 127.0.0.1 --port 8766",
     url: "http://127.0.0.1:8766/api/status",
     reuseExistingServer: false,
     env: { RDX_DATA_DIR: path.resolve(".cache/browser-test") },
-    timeout: 30_000,
+    timeout: 60_000,
   },
 });

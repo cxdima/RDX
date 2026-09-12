@@ -1,4 +1,21 @@
-import { test, expect } from "@playwright/test";
+import {
+  test as base,
+  expect,
+  type APIRequestContext,
+  type Page,
+} from "@playwright/test";
+import type { Project } from "../../src/types";
+
+const test = base.extend<{ projectId: string }>({
+  projectId: async ({ request }, use) => {
+    const response = await request.post("/api/projects", {
+      data: { name: "Generator test", starter: true },
+    });
+    expect(response.ok()).toBeTruthy();
+    const project: Project = await response.json();
+    await use(project.id);
+  },
+});
 
 /**
  * The generators, reached as controls rather than through the model.
@@ -17,33 +34,38 @@ import { test, expect } from "@playwright/test";
 
 /** The notes on one track in one section, read back from the API. */
 async function notes(
-  request: { get: (url: string) => Promise<{ json: () => Promise<any> }> },
+  request: APIRequestContext,
+  id: string,
   role: string,
   sectionName: string,
 ): Promise<{ pitch: number; start: number }[]> {
-  const projects = await (await request.get("/api/projects")).json();
-  const id = (projects.projects ?? projects)[0].id;
-  const project = await (await request.get(`/api/projects/${id}`)).json();
+  const project: Project = await (
+    await request.get(`/api/projects/${id}`)
+  ).json();
   const section = project.sections.find(
     (s: { name: string }) => s.name === sectionName,
-  );
-  const track = project.tracks.find((t: { role: string }) => t.role === role);
+  )!;
+  const track = project.tracks.find((t: { role: string }) => t.role === role)!;
   const clip = track.clips.find(
     (c: { section_id: string }) => c.section_id === section.id,
   );
   return clip ? clip.notes : [];
 }
 
-async function settled<T>(read: () => Promise<T>, want: (value: T) => boolean) {
-  await expect
-    .poll(async () => want(await read()), { timeout: 30_000 })
-    .toBe(true);
-  return read();
+async function edited(page: Page, id: string, act: () => Promise<unknown>) {
+  const response = page.waitForResponse(
+    (r) =>
+      r.url().endsWith(`/api/projects/${id}/edits`) &&
+      r.request().method() === "POST",
+  );
+  await act();
+  expect((await response).ok()).toBeTruthy();
 }
 
 test("the cell control decides the rhythm of the melody it writes", async ({
   page,
   request,
+  projectId,
 }) => {
   await page.goto("/");
   await expect(page.getByRole("heading", { name: "Your session" })).toBeVisible(
@@ -68,18 +90,14 @@ test("the cell control decides the rhythm of the melody it writes", async ({
   // are written here so the comparison is between two things this test did,
   // not against whatever a previous run left behind.
   await panel.locator("select").first().selectOption("pluck");
-  await write.click();
-  const plucked = await settled(
-    () => notes(request, "lead", "Main"),
-    (n) => n.length > 24,
-  );
+  await edited(page, projectId, () => write.click());
+  const plucked = await notes(request, projectId, "lead", "Main");
+  expect(plucked.length).toBeGreaterThan(24);
 
   await panel.locator("select").first().selectOption("anthem");
-  await write.click();
-  const sung = await settled(
-    () => notes(request, "lead", "Main"),
-    (n) => n.length < plucked.length,
-  );
+  await edited(page, projectId, () => write.click());
+  const sung = await notes(request, projectId, "lead", "Main");
+  expect(sung.length).toBeLessThan(plucked.length);
 
   expect(sung.length).toBeGreaterThan(8); // 8 bars, so at least one a bar
   expect(sung.length).toBeLessThanOrEqual(8 * 3); // and at most the cell's three
@@ -88,6 +106,7 @@ test("the cell control decides the rhythm of the melody it writes", async ({
 test("the drum buttons add to the pattern instead of replacing it", async ({
   page,
   request,
+  projectId,
 }) => {
   await page.goto("/");
   await expect(page.getByRole("heading", { name: "Your session" })).toBeVisible(
@@ -101,19 +120,18 @@ test("the drum buttons add to the pattern instead of replacing it", async ({
 
   const panel = page.locator(".write-panel");
   await expect(panel.getByRole("button", { name: "Crash" })).toBeVisible();
-  const before = await notes(request, "drums", "Main");
+  const before = await notes(request, projectId, "drums", "Main");
   const voices = new Set(before.map((n) => n.pitch));
   expect(voices.size).toBeGreaterThan(2);
-  await panel.getByRole("button", { name: "Crash" }).click();
+  await edited(page, projectId, () =>
+    panel.getByRole("button", { name: "Crash" }).click(),
+  );
 
   // Exactly one crash on the downbeat, however many times this has been run:
   // decorating replaces the crash that is there rather than stacking another,
   // and leaves every other voice alone. A pattern rebuilt from a default kit
   // would lose the double claps, which is the bug this guards.
-  const after = await settled(
-    () => notes(request, "drums", "Main"),
-    (n) => n.some((note) => note.pitch === 49),
-  );
+  const after = await notes(request, projectId, "drums", "Main");
   expect(after.filter((n) => n.pitch === 49 && n.start < 1)).toHaveLength(1);
   const kept = new Set(after.map((n) => n.pitch));
   for (const voice of voices) expect(kept).toContain(voice);
@@ -123,6 +141,7 @@ test("the drum buttons add to the pattern instead of replacing it", async ({
 test("the bassline select writes through on change", async ({
   page,
   request,
+  projectId,
 }) => {
   await page.goto("/");
   await expect(page.getByRole("heading", { name: "Your session" })).toBeVisible(
@@ -138,15 +157,27 @@ test("the bassline select writes through on change", async ({
   const bassline = panel.locator("select").nth(5);
 
   // Sixteenths: sixteen a bar over eight bars, whatever was there before.
-  await bassline.selectOption("sixteenth");
-  const run = await settled(
-    () => notes(request, "bass", "Main"),
-    (n) => n.length > 64,
-  );
+  await edited(page, projectId, () => bassline.selectOption("sixteenth"));
+  const run = await notes(request, projectId, "bass", "Main");
   expect(run.length).toBe(8 * 16);
 
   // The placeholder row must not fire an edit of its own.
+  // Bracket the placeholder selection with a real, completed edit. If the
+  // placeholder also submits, the request log will contain a second POST.
+  const posts: string[] = [];
+  page.on("request", (r) => {
+    if (
+      r.method() === "POST" &&
+      r.url().endsWith(`/api/projects/${projectId}/edits`)
+    )
+      posts.push(r.url());
+  });
   await bassline.selectOption("");
-  await page.waitForTimeout(1500);
-  expect((await notes(request, "bass", "Main")).length).toBe(run.length);
+  await edited(page, projectId, () => bassline.selectOption("offbeat"));
+  expect(posts).toHaveLength(1);
+  expect(
+    (await notes(request, projectId, "bass", "Main")).every(
+      (n) => n.start % 1 === 0.5,
+    ),
+  ).toBe(true);
 });
