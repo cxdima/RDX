@@ -131,9 +131,9 @@ progression lands on a diminished chord in the mode you are in, RDX says so
 rather than letting an unstable chord arrive unannounced.
 
 **Whole arrangements.** Four shapes — *club, short, radio, anthem* — laid out
-as named sections with the energies each one needs. Sections are appended, never
-replaced: a move that silently deleted an arrangement would be the most
-destructive thing in the vocabulary.
+as named sections with the energies each one needs. The `structure` move appends
+sections. The `record` action replaces the arrangement in its acceptance preview;
+`replace: false` preserves existing sections and appends the new record.
 
 **Harmony with colour.** Sevenths, ninths, sixths, add9 and suspensions, all
 derived from the key rather than looked up: in A minor the VII is G7 and the
@@ -270,25 +270,27 @@ it in the same call).
 The base is [`mlx-community/Qwen3-4B-Instruct-2507-4bit`](https://huggingface.co/mlx-community/Qwen3-4B-Instruct-2507-4bit),
 pinned to a fixed revision.
 
-**Adapter v3 is the active one.** It scores **25/32** against the base model's
-**11/32** on a held-out benchmark, improving or holding every category
+**Adapter v4 is the active one.** Its recorded score is **29/32** against the base model's
+**11/32** on held-out benchmark v5, improving or holding every category
 and regressing none — including 7/7 on the worked example in
-[RDX_PLAN.md](RDX_PLAN.md). It is approved in `data/models/rdx-v3/approved.json`
+[RDX_PLAN.md](RDX_PLAN.md). It is approved in `data/models/rdx-v4/approved.json`
 alongside the measurement that justified it.
 
-**It does not ship with the repository.** At 176 MB it is too large to commit
-comfortably, so a fresh clone runs the base model until you train your own:
+**Its weights do not ship with the repository.** The 190 MB stays local; its
+training and approval records are committed. Train your own in a new directory
+so the approved adapter is never overwritten:
 
 ```sh
-RDX_ADAPTER=data/models/rdx-v3 .venv/bin/python -m rdx.training \
-    --iters 2400 --batch-size 2 --layers 16 --rank 48 \
-    --learning-rate 6e-5 --warmup 80 --max-seq-length 2560
-RDX_ADAPTER=data/models/rdx-v3 .venv/bin/python -m rdx.evaluate --adapter
-RDX_ADAPTER=data/models/rdx-v3 .venv/bin/python -m rdx.promote
+RDX_ADAPTER=data/models/rdx-local .venv/bin/python -m rdx.training \
+    --iters 2400 --batch-size 2 --layers 20 --rank 64 \
+    --learning-rate 4e-5 --warmup 120 --max-seq-length 2560
+RDX_ADAPTER=data/models/rdx-local .venv/bin/python -m rdx.evaluate --adapter
+RDX_ADAPTER=data/models/rdx-local .venv/bin/python -m rdx.promote
+RDX_ADAPTER=data/models/rdx-local npm start
 ```
 
-About four hours on a 24 GB M-series Mac, peaking at 11.8 GB. What *is*
-committed is `data/models/rdx-v2/` — 14 MB, an earlier and weaker adapter kept
+Training takes hours; keep inference stopped throughout. The historical
+`data/models/rdx-v2/` includes 14 MB of earlier, weaker weights kept
 for comparison, along with the instruction data and every evaluation that
 measured either of them.
 
@@ -306,14 +308,15 @@ and whether unsupported requests are declined rather than approximated. It does
 
 ```sh
 .venv/bin/python scripts/build_training_data.py
-RDX_ADAPTER=data/models/rdx-v3 .venv/bin/python -m rdx.training --iters 600
+RDX_ADAPTER=data/models/rdx-local .venv/bin/python -m rdx.training --iters 600
 .venv/bin/python -m rdx.evaluate                                  # base
-RDX_ADAPTER=data/models/rdx-v3 .venv/bin/python -m rdx.evaluate --adapter
-RDX_ADAPTER=data/models/rdx-v3 .venv/bin/python -m rdx.promote    # activate
+RDX_ADAPTER=data/models/rdx-local .venv/bin/python -m rdx.evaluate --adapter
+RDX_ADAPTER=data/models/rdx-local .venv/bin/python -m rdx.promote    # approve
 ```
 
 `RDX_ADAPTER` selects which adapter is trained and loaded, so an active one is
-never overwritten. Do not run training and inference at the same time on 16 GB.
+never overwritten. Use that same variable when starting the studio with your
+adapter. Do not run training and inference at the same time.
 
 ## What it cannot do
 
@@ -325,7 +328,8 @@ Kept here deliberately, because a capability list without one is marketing.
   are called — and completes a transfer: rendered audio stems alongside editable
   MIDI tracks, with a native Live instrument inserted on each one (Wavetable for
   melodic parts, a Drum Rack for drums) and every note confirmed by reading it
-  back out of Live. That is a handful of runs on one machine, not a guarantee.
+  back out of Live. That is one verified run into an empty Set on one machine,
+  not a guarantee.
 - **What the bridge still cannot do.** Nothing dials those instruments yet: the
   MIDI tracks carry a Wavetable at its default settings, and the sound you
   designed is in the audio stem beside it. Automation does not cross into Live
@@ -378,9 +382,8 @@ Three tests go further than reading the code:
 - Another renders a mix through the studio, uploads the stems, and checks the
   reading that comes back. That one has already caught two real bugs.
 
-Model weights, recordings, databases and test artifacts are excluded from Git by
-design. Everything else — source, tests, docs, the trained adapter and the data
-that measured it — is in the repository.
+New model weights, recordings, databases and test artifacts stay local. Source,
+tests, docs and historical training records are in the repository.
 
 **Contributions are welcome, especially arguments about the musical
 vocabulary.** If you think *warm* should do something different, the disagreement

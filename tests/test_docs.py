@@ -87,6 +87,8 @@ def test_the_readme_does_not_overstate_the_ableton_bridge():
     and the caveat are pinned here.
     """
     assert re.search(r"watched working on 10 September 2026", README)
-    assert re.search(r"a handful of runs on one machine, not a guarantee", README)
+    # "A handful of runs" was itself an overstatement: AGENTS.md and the handoff
+    # both say once. Caught in review; the count is pinned at what it is.
+    assert re.search(r"one verified run into an empty Set on one machine,\s+not a guarantee", README)
     assert re.search(r"Automation does not cross into Live", README)
     assert re.search(r"Nothing dials those instruments yet", README)
