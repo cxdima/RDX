@@ -3,6 +3,8 @@ from __future__ import annotations
 import random
 import math
 
+from pydantic import ValidationError
+
 from .domain import Action, AUTOMATION_RANGES, Automation, Clip, Kit, Master, MELODIC_PRESETS, Note, PITCH_CLASSES, PRESET_DEFAULTS, SCALE_STEPS, Project, Section, Sidechain, Sound, Track, new_track, uid
 from .musical import bass as bass_module
 from .musical import character as character_module
@@ -235,6 +237,23 @@ def starter_project() -> Project:
 
 
 def apply_actions(original: Project, actions: list[Action], selection: dict | None = None, findings: list[str] | None = None, measured: dict | None = None, _depth: int = 0) -> Project:
+    try:
+        result = _apply_actions(original, actions, selection, findings, measured, _depth)
+    except ValidationError as error:
+        raise EditError("Those settings do not fit the project. Check the note pitches, lengths and control ranges.") from error
+    # Check the result as well as explicit targets. Macros recurse after an
+    # unlock, and removing a ducking source edits its dependants indirectly.
+    # Neither may bypass protection at entry to the complete plan.
+    remaining = {track.id: track for track in result.tracks}
+    for track in original.tracks:
+        if track.locked:
+            after = remaining.get(track.id)
+            if after is None or track.model_dump(exclude={"locked"}) != after.model_dump(exclude={"locked"}):
+                raise EditError(f"{track.name} is protected; unlock it in a separate edit first")
+    return result
+
+
+def _apply_actions(original: Project, actions: list[Action], selection: dict | None, findings: list[str] | None, measured: dict | None, _depth: int) -> Project:
     project = original.model_copy(deep=True)
     originally_locked = {t.id for t in original.tracks if t.locked}
     for action in actions:
@@ -285,7 +304,7 @@ def apply_actions(original: Project, actions: list[Action], selection: dict | No
             # the user sees as a preview and accepts, the removals are ordinary
             # actions in the history, and `replace: false` appends instead — for
             # putting a second record in a project that already holds one.
-            replacing = list(project.sections) if p.get("replace", True) else [s for s in project.sections if not any(c.section_id == s.id and c.notes for tr in project.tracks for c in tr.clips)]
+            replacing = list(project.sections) if p.get("replace", True) else []
             clearing: list[Action] = []
             if replacing:
                 # One has to survive until the new sections exist, and it is
@@ -298,7 +317,7 @@ def apply_actions(original: Project, actions: list[Action], selection: dict | No
             before = {s.name for s in project.sections}
             project = apply_actions(project, setup, selection, None, measured, 0)
             if replacing:
-                leftover = next((s for s in project.sections if s.name == "Replaced"), None)
+                leftover = next((s for s in project.sections if s.id == replacing[0].id), None)
                 if leftover and len(project.sections) > 1:
                     project = apply_actions(project, [Action(kind="arrange", section=leftover.id, params={"operation": "remove"})], selection, None, measured, 0)
             fresh = [s.name for s in project.sections if s.name not in before]

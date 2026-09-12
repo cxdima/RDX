@@ -1,7 +1,7 @@
 import pytest
 
 from rdx.domain import Action, Note, Project
-from rdx.engine import apply_actions, starter_project
+from rdx.engine import EditError, apply_actions, starter_project
 
 
 @pytest.fixture
@@ -100,6 +100,41 @@ def test_unlock_and_edit_require_separate_decisions(project):
     project.tracks[0].locked = True
     with pytest.raises(ValueError, match="protected"):
         apply_actions(project, [Action(kind="protect",track="drums",params={"locked":False}),Action(kind="mix",track="drums",params={"delta_db":-2})])
+
+
+@pytest.mark.parametrize("edit", [
+    Action(kind="move", params={"name": "pump"}),
+    Action(kind="record", params={"genre": "trance"}),
+])
+def test_unlock_cannot_bypass_protection_through_a_macro(project, edit):
+    project.tracks[1].locked = True
+    before = project.model_dump()
+    with pytest.raises(EditError, match="protected"):
+        apply_actions(project, [Action(kind="protect", track="bass", params={"locked": False}), edit])
+    assert project.model_dump() == before
+    unlocked = apply_actions(project, [Action(kind="protect", track="bass", params={"locked": False})])
+    assert not unlocked.tracks[1].locked
+
+
+def test_removing_a_source_cannot_change_protected_ducking(project):
+    project = apply_actions(project, [Action(kind="sidechain", track="bass", params={"shape": "pump"})])
+    project.tracks[1].locked = True
+    before = project.model_dump()
+    with pytest.raises(EditError, match="protected"):
+        apply_actions(project, [Action(kind="remove_track", track="drums")])
+    assert project.model_dump() == before
+
+
+@pytest.mark.parametrize("edit", [
+    Action(kind="master", params={"ceiling": 12}),
+    Action(kind="arrange", params={"bars": 0}),
+    Action(kind="notes", track="lead", section="Main", params={"notes": [{"pitch": 300, "start": 0, "duration": 1}]}),
+])
+def test_invalid_model_values_have_musician_facing_errors(project, edit):
+    with pytest.raises(EditError) as caught:
+        apply_actions(project, [edit])
+    assert "validation error" not in str(caught.value)
+    assert "pydantic" not in str(caught.value)
 
 
 def test_section_resize_trims_notes_and_interpolates_automation(project):

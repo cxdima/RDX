@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import pytest
 
-from rdx.domain import Action, SCALE_STEPS
+from rdx.domain import Action, Automation, Clip, Section, SCALE_STEPS, new_track
 from rdx.engine import EditError, Unsupported, apply_actions, starter_project
 from rdx.musical import bass, genres
 from rdx.musical.drums import KICK
@@ -165,6 +165,23 @@ def test_a_record_can_be_appended_to_one_that_is_already_there(selection):
     for name, count in before.items():
         assert after.get(name) == count, f"{name} was disturbed"
     assert len(record.sections) > len(project.sections)
+
+
+def test_appending_preserves_recordings_automation_and_intentional_silence():
+    project = starter_project()
+    recording, silence = Section(name="Recording", bars=2), Section(name="Pause", bars=1)
+    project.sections.extend([recording, silence])
+    audio = new_track("audio")
+    audio.clips = [Clip(section_id=recording.id, audio_id="123456789abc")]
+    audio.automation = [Automation(section_id=silence.id, parameter="volume_db", points=[(0, -6), (4, -60)])]
+    project.tracks.append(audio)
+    before = project.model_dump()
+    result = apply_actions(project, [Action(kind="record", params={"genre": "trance", "replace": False})])
+    assert result.sections[:len(project.sections)] == project.sections
+    after = next(t for t in result.tracks if t.id == audio.id)
+    assert after.clips == audio.clips
+    assert [a for a in after.automation if a.section_id in {recording.id, silence.id}] == audio.automation
+    assert project.model_dump() == before
 
 
 def test_a_genre_rdx_does_not_know_is_refused_by_name(blank, selection):
