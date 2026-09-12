@@ -1,0 +1,9 @@
+{
+  "deactivated_at": "2026-09-12T03:57:29.943103+00:00",
+  "deactivated_because": "Superseded by rdx-v4, which scores 29/32 against this adapter's 25/32 on benchmark version 5, improving musical language, targeting and melody and regressing nothing. v4 was trained on the same prompt with a corrected dataset (a melody intent that collided with a phrase-space benchmark case was rephrased) at 20 layers, rank 64, learning rate 4e-5 after 6e-5 diverged.",
+  "superseded_by": "data/models/rdx-v4",
+  "benchmark_version": 5,
+  "adapter_passed": 25,
+  "base_passed": 11,
+  "total": 32
+}

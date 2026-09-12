@@ -1,8 +1,8 @@
 {
-  "activated_at": "2026-09-11T12:33:06.628404+00:00",
-  "adapter_sha256": "730fc1f764da0a193c7617856534404d394e87b2aaf35c73e49c4a9fd4c9a6ff",
+  "activated_at": "2026-09-12T03:57:29.792432+00:00",
+  "adapter_sha256": "30c550908e118841ebebaa512e97ed4c456fa71fe66652023cb43afe61ea5fef",
   "base_passed": 11,
-  "adapter_passed": 25,
+  "adapter_passed": 29,
   "total": 32,
   "benchmark_version": 5,
   "limits": "Executable instruction following on 32 hand-written requests in the producer's own phrasing, none of which appear in the training data. A refusal counts whether the model declined or the engine stopped it, because either way the user is told RDX cannot do it; wrong_edits lists the cases where something different was silently applied, which is the failure that matters. Does not measure musical quality, taste or audio understanding.",
@@ -12,7 +12,7 @@
       "total": 7
     },
     "musical language": {
-      "passed": 4,
+      "passed": 6,
       "total": 6
     },
     "compound": {
@@ -36,7 +36,7 @@
       "total": 4
     },
     "targeting": {
-      "passed": 1,
+      "passed": 2,
       "total": 2
     },
     "mechanical": {
@@ -44,10 +44,10 @@
       "total": 4
     },
     "melody": {
-      "passed": 2,
+      "passed": 3,
       "total": 3
     }
   },
-  "adapter_path": "/Users/dmoiseenko/Development/RDX/data/models/rdx-v3",
+  "adapter_path": "/Users/dmoiseenko/Development/RDX/data/models/rdx-v4",
   "review": "Initial development adapter. Preview and explicit acceptance remain required. Known instruction failures are retained in adapter-evaluation.json."
 }

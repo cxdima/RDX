@@ -35,6 +35,13 @@ data/models/rdx-v3/*
 !data/models/rdx-v3/approved.json
 !data/models/rdx-v3/adapter_config.json
 !data/models/rdx-v3/training-record.json
+!data/models/rdx-v3/superseded.json
+
+!data/models/rdx-v4
+data/models/rdx-v4/*
+!data/models/rdx-v4/approved.json
+!data/models/rdx-v4/adapter_config.json
+!data/models/rdx-v4/training-record.json
 
 # The retired adapter's record, for provenance. Not its weights.
 !data/models/rdx-v1
