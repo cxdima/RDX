@@ -125,6 +125,22 @@ def test_removing_a_source_cannot_change_protected_ducking(project):
     assert project.model_dump() == before
 
 
+@pytest.mark.parametrize("params", [
+    {"operation": "remove"},
+    {"operation": "update", "bars": 2},
+    {"operation": "move", "index": 3},
+])
+def test_editing_an_earlier_empty_section_cannot_move_protected_notes(project, params):
+    main = project.sections[2].id
+    for track in project.tracks:
+        track.clips = [c for c in track.clips if c.section_id == main]
+    project.tracks[-1].locked = True
+    before = project.model_dump()
+    with pytest.raises(EditError, match="protected"):
+        apply_actions(project, [Action(kind="arrange", section="Intro", params=params)])
+    assert project.model_dump() == before
+
+
 @pytest.mark.parametrize("edit", [
     Action(kind="master", params={"ceiling": 12}),
     Action(kind="arrange", params={"bars": 0}),

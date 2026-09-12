@@ -245,11 +245,22 @@ def apply_actions(original: Project, actions: list[Action], selection: dict | No
     # unlock, and removing a ducking source edits its dependants indirectly.
     # Neither may bypass protection at entry to the complete plan.
     remaining = {track.id: track for track in result.tracks}
+    def spans(project: Project) -> dict[str, tuple[int, int]]:
+        offset = 0
+        positions = {}
+        for section in project.sections:
+            positions[section.id] = (offset, section.bars * 4)
+            offset += section.bars * 4
+        return positions
+    before_spans, after_spans = spans(original), spans(result)
     for track in original.tracks:
         if track.locked:
             after = remaining.get(track.id)
             if after is None or track.model_dump(exclude={"locked"}) != after.model_dump(exclude={"locked"}):
                 raise EditError(f"{track.name} is protected; unlock it in a separate edit first")
+            material = {c.section_id for c in track.clips} | {a.section_id for a in track.automation}
+            if any(before_spans.get(section_id) != after_spans.get(section_id) for section_id in material):
+                raise EditError(f"That arrangement change would move or shorten protected material on {track.name}")
     return result
 
 
