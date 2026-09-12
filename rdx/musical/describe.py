@@ -113,7 +113,7 @@ def track_changes(before: Track, after: Track, names: dict[str, str], tracks: di
     if len(fresh) >= 4:
         # A record writes a part into every section at once; naming each one
         # buries the three lines that say what the record is.
-        parts.append(f"new parts in {count(len(fresh), 'section')} ({count(sum(len(c.notes) for c in fresh), 'note')})")
+        parts.append(f"new parts in {count(len(fresh), 'section')} ({', '.join(names.get(c.section_id, 'a section') for c in fresh)}; {count(sum(len(c.notes) for c in fresh), 'note')})")
     for clip in after.clips:
         previous = old_clips.get(clip.section_id)
         where = names.get(clip.section_id, "a section")
@@ -125,32 +125,40 @@ def track_changes(before: Track, after: Track, names: dict[str, str], tracks: di
             parts.append(f"{where} {len(previous.notes)} to {len(clip.notes)} notes")
         elif [(n.pitch, n.start, n.duration, n.velocity) for n in previous.notes] != [(n.pitch, n.start, n.duration, n.velocity) for n in clip.notes]:
             parts.append(f"{where} notes changed")
+        if previous is not None:
+            if previous.audio_id != clip.audio_id:
+                parts.append(f"recording changed in {where}")
+            if previous.audio_offset != clip.audio_offset:
+                parts.append(change(f"recording start in {where}", previous.audio_offset, clip.audio_offset, "s", 3))
     # A part in a section that no longer exists is not a removal worth naming:
     # the section line already said the arrangement was replaced.
     gone = [c for c in before.clips if c.section_id not in {c.section_id for c in after.clips} and c.section_id not in gone_sections]
     if len(gone) >= 3:
-        parts.append(f"parts removed from {count(len(gone), 'section')}")
+        parts.append(f"parts removed from {count(len(gone), 'section')} ({', '.join(names.get(c.section_id, 'a section') for c in gone)})")
     else:
         parts.extend(f"part removed from {names.get(c.section_id, 'a section')}" for c in gone)
-    old_lanes = {(a.parameter, a.section_id) for a in before.automation}
-    new_lanes = {(a.parameter, a.section_id) for a in after.automation}
-    added_lanes = sorted(new_lanes - old_lanes)
+    old_lanes = {(a.parameter, a.section_id): a.points for a in before.automation}
+    new_lanes = {(a.parameter, a.section_id): a.points for a in after.automation}
+    added_lanes = sorted(new_lanes.keys() - old_lanes.keys())
     by_parameter: dict[str, list[str]] = {}
     for parameter, section_id in added_lanes:
         by_parameter.setdefault(parameter, []).append(names.get(section_id, "a section"))
     for parameter, where in by_parameter.items():
         if len(where) >= 3:
-            parts.append(f"{lane_name(parameter)} automation in {count(len(where), 'section')}")
+            parts.append(f"{lane_name(parameter)} automation in {count(len(where), 'section')} ({', '.join(where)})")
         else:
             parts.extend(f"{lane_name(parameter)} automation in {w}" for w in where)
-    for parameter, section_id in sorted(old_lanes - new_lanes):
+    for parameter, section_id in sorted(old_lanes.keys() & new_lanes.keys()):
+        if old_lanes[parameter, section_id] != new_lanes[parameter, section_id]:
+            parts.append(f"{lane_name(parameter)} automation changed in {names.get(section_id, 'a section')}")
+    for parameter, section_id in sorted(old_lanes.keys() - new_lanes.keys()):
         parts.append(f"{lane_name(parameter)} automation removed from {names.get(section_id, 'a section')}")
     return parts
 
 
 def describe(before: Project, after: Project) -> str:
     """A plain reading of every difference between two versions of a project."""
-    names = section_names(after) | section_names(before)
+    names = section_names(before) | section_names(after)
     lines: list[str] = []
     project_parts = []
     if before.name != after.name:
@@ -184,10 +192,13 @@ def describe(before: Project, after: Project) -> str:
         previous = old_sections.get(section.id)
         if previous is None:
             lines.append(f"Added section {section.name} ({section.bars} bars)")
-        elif previous.bars != section.bars:
-            lines.append(f"{section.name}: {previous.bars} to {section.bars} bars")
-        elif previous.name != section.name:
-            lines.append(f"Section {previous.name} renamed to {section.name}")
+        else:
+            if previous.bars != section.bars:
+                lines.append(f"{section.name}: {previous.bars} to {section.bars} bars")
+            if previous.name != section.name:
+                lines.append(f"Section {previous.name} renamed to {section.name}")
+            if previous.energy != section.energy:
+                lines.append(change(f"{section.name} energy", previous.energy, section.energy, "", 2))
     for section in before.sections:
         if not replaced and section.id not in new_sections:
             lines.append(f"Removed section {section.name}")
