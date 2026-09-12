@@ -103,8 +103,8 @@ the idea — *pluck*, *anthem*, *call*, *drive*, *push*, *roll*, *stab*), a
 **shape** (where it goes, in scale steps), and a **form** (what happens to it
 across eight bars — stated, repeated, sequenced up, left open as a question,
 lifted to a peak, resolved home). Notes on the strongest beats are pulled onto
-tones of the chord underneath, so the line sits inside the harmony instead of
-arguing with it, and a breakdown gets long singable notes rather than the drop's
+nearby in-key tones of the chord underneath, so the line sits inside the harmony
+instead of arguing with it, and a breakdown gets long singable notes rather than the drop's
 line played quieter. See [`motif.py`](rdx/musical/motif.py).
 
 **Basslines, which is where a genre actually lives.** *offbeat* plays between
@@ -210,12 +210,14 @@ measured.**
 
 **A master that reaches its ceiling.** Compression with makeup and a slow
 enough attack to let the kick's transient through, then a limiter, then a soft
-clip at the ceiling for what the limiter misses — so a rendered record lands
-between −12 and −16 LUFS integrated, measured across all five genres, with
-nothing over full scale: a normal record's level.
+clip for what the limiter misses and a sample guard after oversampling. The
+12 September 2026 renders of all five genres measured −12.3 to −15.5 LUFS with
+RDX's measurement script, with no full-scale clipping and sample peaks at or
+below −1 dBFS. The script measures a mono downmix; these are not independent
+stereo loudness or reconstructed true-peak measurements.
 The balance underneath was measured part by part on a rendered drop and set so
 the tune sits about 6 dB under the kick, which is where a trance mix has it;
-reverb is a send high-passed at 300 Hz, so nothing low reverberates into the
+reverb is a send high-passed at 300 Hz to reduce reverberant low end in the
 band the kick needs clear.
 
 **Arrangement and mixing.** Sections you can add, duplicate, resize and reorder;
