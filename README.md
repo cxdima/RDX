@@ -87,7 +87,7 @@ npm run test:browser   # Playwright against the real built app
 
 ## What it can do
 
-**Whole records, by genre.** *"Make me a trance record"* builds one: 138 BPM in
+**Whole records, by genre.** *"Make me a trance record"* builds one: 132 BPM in
 a minor key, a club structure with two drops and a breakdown, a 909 kit, an
 offbeat bassline that plays *between* every kick, supersaw chords on the
 progression, everything ducking under the kick. Five genres — *trance,

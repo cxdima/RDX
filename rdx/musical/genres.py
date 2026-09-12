@@ -37,6 +37,7 @@ class Genre:
     machine: str
     layers: dict[str, str] = field(default_factory=dict)
     # The bassline rhythm. This is the single most genre-defining choice here.
+    key: str = ""  # tonic note; blank keeps the project default
     bass: str = "offbeat"
     # Sounds, by role.
     patches: dict[str, str] = field(default_factory=dict)
@@ -61,10 +62,11 @@ class Genre:
 
 GENRES: dict[str, Genre] = {
     "trance": Genre(
-        "uplifting trance: offbeat bass between every kick, supersaw chords, a long breakdown and a build that takes its time",
-        tempo=138,
+        "dark, driving trance: offbeat bass between every kick, brooding supersaw stabs, a long breakdown and a build that takes its time",
+        tempo=132,
         scale="minor",
-        progression="trance",
+        key="E",
+        progression="epic",
         structure="club",
         kit="mainstage",
         machine="909",
@@ -183,6 +185,7 @@ def record(project: Project, name: str, *, bars: int | None = None, key: str | N
     genre = GENRES[name]
     roles = roles_for(genre)
     present = {t.role for t in project.tracks}
+    key = key or genre.key or None
     actions: list[Action] = [Action(kind="project", params={"tempo": float(genre.tempo), "scale": genre.scale, **({"key": key} if key else {})})]
 
     # Anything the genre needs and the project does not have.
@@ -261,7 +264,7 @@ def shape_for(project: Project, name: str, section_names: list[str]) -> list[Act
             continue
         word = section.name.split()[0].lower()
         if word == "build":
-            actions.append(Action(kind="move", section=section.id, params={"name": "buildup", "intensity": 0.9, "cut_bars": 1}))
+            actions.append(Action(kind="move", section=section.id, params={"name": "buildup", "intensity": 0.9, "cut_bars": 0.25}))
         elif word == "drop":
             actions.append(Action(kind="move", section=section.id, params={
                 "name": "drop",

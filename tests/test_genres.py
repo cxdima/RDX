@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import pytest
 
-from rdx.domain import Action, Automation, Clip, Section, SCALE_STEPS, new_track
+from rdx.domain import Action, Automation, Clip, PITCH_CLASSES, Section, SCALE_STEPS, new_track
 from rdx.engine import EditError, Unsupported, apply_actions, starter_project
 from rdx.musical import bass, genres
 from rdx.musical.drums import KICK
@@ -109,8 +109,9 @@ def test_every_record_stays_in_its_key(blank, selection, name):
     """
     record = made(blank, selection, name)
     steps = SCALE_STEPS[record.scale]
-    allowed = {(9 + step) % 12 for step in steps}
-    borrowed = {(9 + steps[4] + 4) % 12}  # the major third of the fifth degree
+    root = PITCH_CLASSES.index(record.key)  # the record's own tonic, not a fixed A
+    allowed = {(root + step) % 12 for step in steps}
+    borrowed = {(root + steps[4] + 4) % 12}  # the major third of the fifth degree
     for track in record.tracks:
         if track.role in {"drums", "audio"} or track.name == "Riser":
             continue

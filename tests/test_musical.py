@@ -1320,7 +1320,7 @@ def test_a_whole_record_is_described_as_a_record_and_not_as_bookkeeping():
     assert any(l.startswith("Arrangement replaced:") and "96 bars" in l for l in lines), text
     assert not any(l.startswith("Added section") or l.startswith("Removed section") for l in lines), text
     assert any("new parts in" in l and "sections" in l for l in lines), text
-    assert "tempo 124 to 138 BPM" in text, "the facts that matter are still there"
+    assert "tempo 124 to 132 BPM" in text, "the facts that matter are still there"
     assert "Reordered" not in text, "a replacement is not a reordering"
     assert "part removed from" not in text, "and the old sections' parts are not itemised"
     assert len(lines) <= 12, f"{len(lines)} lines:\n{text}"
