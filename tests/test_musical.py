@@ -1303,3 +1303,38 @@ def test_the_studio_offers_exactly_the_musical_vocabulary_python_has():
         ("PROGRESSIONS", set(harmony_module.NAMED_PROGRESSIONS)),
     ):
         assert set(javascript_names(source, name)) == expected, name
+
+
+def test_a_whole_record_is_described_as_a_record_and_not_as_bookkeeping():
+    """The reader is a producer deciding whether to accept the edit. Seven
+    'Added section' lines followed by four 'Removed section' lines, then every
+    track's part in every section, buried the three lines that said what the
+    record was — the description ran past three thousand characters."""
+    from rdx.engine import apply_actions, starter_project
+    from rdx.musical import describe
+
+    before = starter_project()
+    after = apply_actions(before, [Action(kind="record", params={"genre": "trance"})])
+    text = describe.describe(before, after)
+    lines = text.splitlines()
+    assert any(l.startswith("Arrangement replaced:") and "96 bars" in l for l in lines), text
+    assert not any(l.startswith("Added section") or l.startswith("Removed section") for l in lines), text
+    assert any("new parts in" in l and "sections" in l for l in lines), text
+    assert "tempo 124 to 138 BPM" in text, "the facts that matter are still there"
+    assert "Reordered" not in text, "a replacement is not a reordering"
+    assert "part removed from" not in text, "and the old sections' parts are not itemised"
+    assert len(lines) <= 12, f"{len(lines)} lines:\n{text}"
+
+
+def test_a_single_section_edit_is_still_described_in_full():
+    """Condensing is for wholesale change only. One part in one section must
+    still be named, because that is the edit the user asked for."""
+    from rdx.engine import apply_actions, starter_project
+    from rdx.musical import describe
+
+    before = starter_project()
+    section = next(s for s in before.sections if s.name == "Main")
+    after = apply_actions(before, [Action(kind="arrange", section=section.id, params={"operation": "duplicate"})])
+    text = describe.describe(before, after)
+    assert "Added section Main 2" in text, text
+    assert "Arrangement replaced" not in text

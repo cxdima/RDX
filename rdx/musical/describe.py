@@ -78,7 +78,7 @@ def ducking(setting: Sidechain, tracks: dict[str, str]) -> str:
     return f"ducking {abs(depth_db(setting.amount))} dB under {possessive(source)} {setting.trigger}" + (f" ({shape})" if shape else f", back over {round(setting.release, 2)} beats")
 
 
-def track_changes(before: Track, after: Track, names: dict[str, str], tracks: dict[str, str] | None = None) -> list[str]:
+def track_changes(before: Track, after: Track, names: dict[str, str], tracks: dict[str, str] | None = None, gone_sections: set[str] = frozenset()) -> list[str]:
     parts: list[str] = []
     if before.name != after.name:
         parts.append(f"renamed to {after.name}")
@@ -109,22 +109,40 @@ def track_changes(before: Track, after: Track, names: dict[str, str], tracks: di
     if before.sidechain != after.sidechain:
         parts.append(ducking(after.sidechain, tracks or {}) if after.sidechain else "ducking removed")
     old_clips = {c.section_id: c for c in before.clips}
+    fresh = [c for c in after.clips if c.section_id not in old_clips and c.notes]
+    if len(fresh) >= 4:
+        # A record writes a part into every section at once; naming each one
+        # buries the three lines that say what the record is.
+        parts.append(f"new parts in {count(len(fresh), 'section')} ({count(sum(len(c.notes) for c in fresh), 'note')})")
     for clip in after.clips:
         previous = old_clips.get(clip.section_id)
         where = names.get(clip.section_id, "a section")
         if previous is None:
+            if len(fresh) >= 4 and clip in fresh:
+                continue
             parts.append(f"new part in {where} ({count(len(clip.notes), 'note')})")
         elif len(previous.notes) != len(clip.notes):
             parts.append(f"{where} {len(previous.notes)} to {len(clip.notes)} notes")
         elif [(n.pitch, n.start, n.duration, n.velocity) for n in previous.notes] != [(n.pitch, n.start, n.duration, n.velocity) for n in clip.notes]:
             parts.append(f"{where} notes changed")
-    for clip in before.clips:
-        if clip.section_id not in {c.section_id for c in after.clips}:
-            parts.append(f"part removed from {names.get(clip.section_id, 'a section')}")
+    # A part in a section that no longer exists is not a removal worth naming:
+    # the section line already said the arrangement was replaced.
+    gone = [c for c in before.clips if c.section_id not in {c.section_id for c in after.clips} and c.section_id not in gone_sections]
+    if len(gone) >= 3:
+        parts.append(f"parts removed from {count(len(gone), 'section')}")
+    else:
+        parts.extend(f"part removed from {names.get(c.section_id, 'a section')}" for c in gone)
     old_lanes = {(a.parameter, a.section_id) for a in before.automation}
     new_lanes = {(a.parameter, a.section_id) for a in after.automation}
-    for parameter, section_id in sorted(new_lanes - old_lanes):
-        parts.append(f"{lane_name(parameter)} automation in {names.get(section_id, 'a section')}")
+    added_lanes = sorted(new_lanes - old_lanes)
+    by_parameter: dict[str, list[str]] = {}
+    for parameter, section_id in added_lanes:
+        by_parameter.setdefault(parameter, []).append(names.get(section_id, "a section"))
+    for parameter, where in by_parameter.items():
+        if len(where) >= 3:
+            parts.append(f"{lane_name(parameter)} automation in {count(len(where), 'section')}")
+        else:
+            parts.extend(f"{lane_name(parameter)} automation in {w}" for w in where)
     for parameter, section_id in sorted(old_lanes - new_lanes):
         parts.append(f"{lane_name(parameter)} automation removed from {names.get(section_id, 'a section')}")
     return parts
@@ -150,7 +168,19 @@ def describe(before: Project, after: Project) -> str:
 
     old_sections = {s.id: s for s in before.sections}
     new_sections = {s.id: s for s in after.sections}
+    # A whole arrangement replaced — what a record does — reads as one line,
+    # not as seven additions followed by four removals. The reader is a
+    # producer deciding whether to accept an edit, and the per-section
+    # bookkeeping tells them nothing the new shape does not.
+    replaced = bool(before.sections) and bool(after.sections) and not (set(old_sections) & set(new_sections))
+    gone_sections = set(old_sections) if replaced else set()
+    if replaced:
+        shape = ", ".join(f"{s.name} ({s.bars})" for s in after.sections)
+        lines.append(f"Arrangement replaced: {shape} — {sum(s.bars for s in after.sections)} bars")
+        old_sections, new_sections = {}, {}  # nothing left to itemise
     for section in after.sections:
+        if replaced:
+            break
         previous = old_sections.get(section.id)
         if previous is None:
             lines.append(f"Added section {section.name} ({section.bars} bars)")
@@ -159,9 +189,9 @@ def describe(before: Project, after: Project) -> str:
         elif previous.name != section.name:
             lines.append(f"Section {previous.name} renamed to {section.name}")
     for section in before.sections:
-        if section.id not in new_sections:
+        if not replaced and section.id not in new_sections:
             lines.append(f"Removed section {section.name}")
-    if [s.id for s in before.sections] != [s.id for s in after.sections] and set(old_sections) == set(new_sections):
+    if not replaced and [s.id for s in before.sections] != [s.id for s in after.sections] and set(old_sections) == set(new_sections):
         lines.append("Reordered the arrangement")
 
     old_tracks = {t.id: t for t in before.tracks}
@@ -173,7 +203,7 @@ def describe(before: Project, after: Project) -> str:
             detail = f"{track.role}, {track.sound.preset}" + (f", {count(notes, 'note')}" if notes else "")
             lines.append(f"Added track {track.name} ({detail})")
             continue
-        parts = track_changes(previous, track, names, track_names)
+        parts = track_changes(previous, track, names, track_names, gone_sections)
         if parts:
             lines.append(f"{track.name}: " + ", ".join(parts))
     for track in before.tracks:
