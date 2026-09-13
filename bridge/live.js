@@ -7,7 +7,7 @@ outlets = 2;
 // in the background it does not fire at all — and a stale script that looks
 // connected is the hardest kind of failure to see. Bump this whenever the
 // behaviour changes, and the studio will say when the device needs reloading.
-var DEVICE_VERSION = 9;
+var DEVICE_VERSION = 10;
 
 var busy = false;
 var completed = {};
@@ -201,6 +201,44 @@ function addNotes(clip, notes, length) {
     if (got.count >= notes.length) return {ok: true, count: got.count};
     return {ok: false, detail: 'Live kept ' + got.count + ' of ' + notes.length + (got.detail ? ' (' + got.detail + ')' : '')};
 }
+function clearRegion(trk, start, length) {
+    // Delete arrangement clips overlapping [start, start+length) so add_clip
+    // *replaces* a track's clip instead of failing on an occupied region — Live
+    // will not create a clip over an existing one, and a re-send would otherwise
+    // stack or error. delete_clip's exact call shape is not something to assume
+    // (hard rule: recheck the LOM, never assume a function's signature), so the
+    // documented forms are tried and the result is verified by re-reading the
+    // clip list. A clip whose times cannot be read is treated as overlapping so
+    // it can never wedge the loop.
+    var regionEnd = start + length;
+    var removed = 0;
+    for (var guard = 0; guard < 128; guard++) {
+        var clipIds = ids(trk.get('arrangement_clips'));
+        var victim = null;
+        for (var i = 0; i < clipIds.length; i++) {
+            var c = api('id ' + clipIds[i]);
+            var s, e;
+            try { s = number(c, 'start_time'); e = number(c, 'end_time'); } catch (err) { s = start; e = regionEnd; }
+            if (isNaN(s) || isNaN(e)) { s = start; e = regionEnd; }
+            if (s < regionEnd && e > start) { victim = clipIds[i]; break; }
+        }
+        if (victim === null) break;
+        var had = clipIds.length;
+        var forms = [
+            function () { trk.call('delete_clip', 'id', victim); },
+            function () { trk.call('delete_clip', victim); },
+            function () { trk.call('delete_clip', 'id ' + victim); }
+        ];
+        var gone = false, errs = [];
+        for (var f = 0; f < forms.length && !gone; f++) {
+            try { forms[f](); } catch (err2) { errs.push(err2.message); continue; }
+            if (ids(trk.get('arrangement_clips')).length < had) gone = true;
+        }
+        if (!gone) throw new Error('Could not clear a clip on ' + text(trk, 'name') + ' (delete_clip): ' + errs.join('; '));
+        removed++;
+    }
+    return removed;
+}
 // Native Live instruments for RDX's roles. Only native devices can be
 // inserted — plugins cannot, whatever the user owns — so this is deliberately
 // a short list of things every Live 12 Suite install has.
@@ -357,8 +395,10 @@ function command(filename) {
             if (!trk) throw new Error('No track named "' + job.track_name + '"');
             if (job.tempo) song.set('tempo', job.tempo);
             var length = job.length || 16;
+            var startBeat = job.start || 0;
+            var removed = clearRegion(trk, startBeat, length);
             var before = ids(trk.get('arrangement_clips'));
-            trk.call('create_midi_clip', job.start || 0, length);
+            trk.call('create_midi_clip', startBeat, length);
             var after = ids(trk.get('arrangement_clips'));
             var made = after.filter(function (id) { return before.indexOf(id) === -1; });
             if (made.length !== 1) throw new Error('MIDI clip creation did not complete on ' + job.track_name);
@@ -366,7 +406,7 @@ function command(filename) {
             clip.set('name', job.track_name);
             var written = addNotes(clip, job.notes || [], length);
             busy = false; refresh();
-            var r = {id: job.id, ok: written.ok, message: written.ok ? ('Wrote ' + written.count + ' notes to ' + job.track_name) : ('Notes failed on ' + job.track_name + ': ' + written.detail)};
+            var r = {id: job.id, ok: written.ok, message: written.ok ? ('Wrote ' + written.count + ' notes to ' + job.track_name + (removed ? ' (replaced ' + removed + ' clip' + (removed > 1 ? 's' : '') + ')' : '')) : ('Notes failed on ' + job.track_name + ': ' + written.detail)};
             completed[job.id] = r; outlet(0, 'result', JSON.stringify(r)); outlet(1, r.message); return;
         }
         if (job.kind !== 'append_project') throw new Error('Unsupported transfer');

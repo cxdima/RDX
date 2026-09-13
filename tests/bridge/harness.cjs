@@ -69,6 +69,26 @@ class FakeLiveAPI {
       const id = nextId();
       set.byId[id] = { id, end_time: args[1] + 8 };
       this.node.arrangement_clips.push(id);
+    } else if (name === "create_midi_clip") {
+      const id = nextId();
+      set.byId[id] = { id, start_time: args[0], end_time: args[0] + args[1], _notes: [] };
+      this.node.arrangement_clips.push(id);
+    } else if (name === "delete_clip") {
+      // A clip object is passed by id, in one of several call shapes; find it.
+      let cid = null;
+      for (const a of args) {
+        if (typeof a === "number") { cid = a; break; }
+        if (typeof a === "string") { const m = a.match(/\d+/); if (m) { cid = Number(m[0]); break; } }
+      }
+      const clips = this.node.arrangement_clips || [];
+      const at = clips.indexOf(cid);
+      if (at !== -1) { clips.splice(at, 1); delete set.byId[cid]; }
+    } else if (name === "add_new_notes") {
+      let data = {};
+      try { data = JSON.parse(args[0].stringify()); } catch (e) { data = {}; }
+      if (this.node._notes) this.node._notes.push(...(data.notes || []));
+    } else if (name === "get_notes_extended") {
+      return JSON.stringify({ notes: this.node._notes || [] });
     }
   }
 }
@@ -79,10 +99,13 @@ const context = {
   Dict: class {
     constructor() {
       this.name = "d1";
+      this._json = "{}";
     }
-    parse() {}
+    parse(text) {
+      this._json = typeof text === "string" ? text : "{}";
+    }
     stringify() {
-      return "{}";
+      return this._json;
     }
     freepeer() {}
   },

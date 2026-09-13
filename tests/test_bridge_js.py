@@ -39,6 +39,8 @@ def run(live_set: dict, tmp_path: Path) -> dict:
             by_id[str(device["id"])] = device
             for parameter in device.get("parameter_objects", []):
                 by_id[str(parameter["id"])] = parameter
+        for clip in track.get("clip_objects", []):
+            by_id[str(clip["id"])] = clip
     live_set["byId"] = by_id
     path = tmp_path / "set.json"
     path.write_text(json.dumps(live_set))
@@ -62,13 +64,15 @@ def a_set(tracks: list[dict], tempo: float = 124.0) -> dict:
             parameters = [{"id": next_id(), "name": name, "min": 0.0, "max": 1.0, "value": 0.5} for name in device.get("parameters", [])]
             devices.append({"id": next_id(), "name": device["name"], "class_name": device.get("class_name", "InstrumentVector"), "class_display_name": device.get("kind", device["name"]), "parameters": [p["id"] for p in parameters], "parameter_objects": parameters})
         slots = [{"id": next_id(), "has_clip": 0} for _ in range(track.get("slots", 0))]
+        clips = [{"id": next_id(), "start_time": float(c["start"]), "end_time": float(c["start"] + c["length"]), "_notes": []} for c in track.get("clips", [])]
         track_objects.append({
             "id": next_id(),
             "name": track["name"],
             "has_midi_input": 1 if track.get("midi") else 0,
             "devices": [d["id"] for d in devices],
             "device_objects": devices,
-            "arrangement_clips": [],
+            "arrangement_clips": [c["id"] for c in clips],
+            "clip_objects": clips,
             "clip_slots": [s["id"] for s in slots],
             "slot_objects": slots,
         })
@@ -235,3 +239,46 @@ def test_content_added_after_the_sweep_prevents_a_tempo_overwrite(tmp_path):
     assert result["transfer"]["ok"] is False
     assert "tempo" in result["transfer"]["message"]
     assert result["writes"] == [], "refuse before changing the Set"
+
+
+def test_add_clip_replaces_the_clip_already_in_the_region(tmp_path):
+    """add_clip must *replace* a track's clip, not fail on the occupied region.
+
+    Live will not create an arrangement clip over an existing one, so a second
+    write to a track threw "MIDI clip creation did not complete". Clearing the
+    region first makes add_clip a true "place this clip here" and makes a
+    re-send idempotent. This is what lets the open hat sit alone on the offbeat:
+    the closed-hat clip is replaced with a 16th roll rather than doubled.
+    """
+    live_set = a_set([{"name": "RDX Hats", "midi": True, "clips": [{"start": 0, "length": 64}]}], tempo=132)
+    live_set["command"] = {
+        "id": "clip-job", "kind": "add_clip", "track_name": "RDX Hats",
+        "notes": [
+            {"pitch": 60, "start_time": 0.25, "duration": 0.12, "velocity": 90, "mute": 0},
+            {"pitch": 60, "start_time": 0.75, "duration": 0.12, "velocity": 90, "mute": 0},
+        ],
+        "start": 0, "length": 64,
+    }
+    result = run(live_set, tmp_path)
+    assert result["transfer"]["ok"] is True, result["transfer"]
+    assert "Wrote 2 notes to RDX Hats" in result["transfer"]["message"]
+    assert "replaced 1 clip" in result["transfer"]["message"]
+    deletes = [w for w in result["writes"] if w.get("call") == "delete_clip"]
+    creates = [w for w in result["writes"] if w.get("call") == "create_midi_clip"]
+    assert len(deletes) == 1, "the occupying clip must be deleted exactly once"
+    assert len(creates) == 1, "exactly one fresh clip is created after clearing"
+
+
+def test_add_clip_on_an_empty_track_writes_without_replacing(tmp_path):
+    """The common case is unchanged: an empty region needs no deletion."""
+    live_set = a_set([{"name": "RDX Lead", "midi": True}], tempo=132)
+    live_set["command"] = {
+        "id": "clip-job", "kind": "add_clip", "track_name": "RDX Lead",
+        "notes": [{"pitch": 64, "start_time": 0.0, "duration": 0.2, "velocity": 100, "mute": 0}],
+        "start": 0, "length": 16,
+    }
+    result = run(live_set, tmp_path)
+    assert result["transfer"]["ok"] is True, result["transfer"]
+    assert "Wrote 1 notes to RDX Lead" in result["transfer"]["message"]
+    assert "replaced" not in result["transfer"]["message"]
+    assert not [w for w in result["writes"] if w.get("call") == "delete_clip"]
