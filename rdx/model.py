@@ -16,7 +16,7 @@ MODEL = ROOT / "data" / "models" / "qwen3-4b"
 # This has to name the version that is actually approved: it pointed at rdx-v1
 # for a while after that adapter was retired, so RDX quietly ran the base model
 # while reporting a trained one, and a finished training run went unused.
-ADAPTER = Path(os.environ.get("RDX_ADAPTER", ROOT / "data" / "models" / "rdx-v4")).resolve()
+ADAPTER = Path(os.environ.get("RDX_ADAPTER", ROOT / "data" / "models" / "rdx-v5")).resolve()
 
 SYSTEM = """You are RDX, a local co-producer for trance and electronic music. The user describes a feeling; you pick the operation that delivers it.
 

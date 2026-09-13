@@ -1,0 +1,9 @@
+{
+  "deactivated_at": "2026-09-13T00:45:29.040421+00:00",
+  "deactivated_because": "Superseded by rdx-v5: 30/32 vs this adapter's 29/32 on benchmark v5 (base 11). v5 improved declining 2->4 and shaping 1->2 on a corrected dataset; it regressed two ambiguous cases (broken-beat targeting, and a phrase-vs-melody climb case). Promoted on the user's call as a net +1, with those two regressions logged for a future round.",
+  "superseded_by": "data/models/rdx-v5",
+  "benchmark_version": 5,
+  "adapter_passed": 29,
+  "base_passed": 11,
+  "total": 32
+}
