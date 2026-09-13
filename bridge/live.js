@@ -7,7 +7,7 @@ outlets = 2;
 // in the background it does not fire at all — and a stale script that looks
 // connected is the hardest kind of failure to see. Bump this whenever the
 // behaviour changes, and the studio will say when the device needs reloading.
-var DEVICE_VERSION = 5;
+var DEVICE_VERSION = 6;
 
 var busy = false;
 var completed = {};
@@ -297,6 +297,26 @@ function command(filename) {
                 try { forms[f](); } catch (e) { tries.push(e.message); continue; }
                 if (ids(target.get('devices')).length > had) placed = true; else tries.push('form ' + (f + 1) + ' added nothing');
             }
+            // Apply an optional parameter recipe to the inserted device, and
+            // read each value back as its real display string (str_for_value) so
+            // a normalized 0..1 knob is confirmed in Hz/dB/semitones, not guessed.
+            var applied = [], missed = [];
+            if (placed && job.params && job.params.length) {
+                var instIds = ids(target.get('devices'));
+                var inst = api('id ' + instIds[instIds.length - 1]);
+                var pmap = {};
+                var ipids = ids(inst.get('parameters'));
+                for (var i = 0; i < ipids.length; i++) { pmap[text(api('id ' + ipids[i]), 'name')] = ipids[i]; }
+                for (var j = 0; j < job.params.length; j++) {
+                    var pv = job.params[j];
+                    if (pmap[pv.name] === undefined) { missed.push(pv.name); continue; }
+                    var pp = api('id ' + pmap[pv.name]);
+                    var v = Math.max(number(pp, 'min'), Math.min(number(pp, 'max'), pv.value));
+                    pp.set('value', v);
+                    var disp; try { var s = pp.call('str_for_value', v); disp = (s && s.join) ? s.join(' ') : String(s); } catch (e) { disp = String(v); }
+                    applied.push(pv.name + ' = ' + disp);
+                }
+            }
             var deviceIds = ids(target.get('devices'));
             var scanned = [];
             for (var d = 0; d < deviceIds.length; d++) {
@@ -311,7 +331,7 @@ function command(filename) {
             }
             busy = false;
             refresh();
-            var probe = {id: job.id, ok: placed, message: placed ? ('Placed ' + job.device + ' on a new MIDI track') : ('Could not place ' + job.device + ': ' + tries.join('; ')), devices: scanned};
+            var probe = {id: job.id, ok: placed, message: placed ? ('Placed ' + job.device + ' and set ' + applied.length + ' params' + (missed.length ? ' (' + missed.length + ' missing)' : '')) : ('Could not place ' + job.device + ': ' + tries.join('; ')), applied: applied, missed: missed, devices: scanned};
             completed[job.id] = probe;
             outlet(0, 'result', JSON.stringify(probe));
             outlet(1, probe.message);
