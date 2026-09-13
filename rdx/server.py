@@ -427,6 +427,16 @@ def send_to_ableton(project_id: str, request: Transfer):
     return {"id": bridge.send(project, paths)}
 
 
+class Insert(Model):
+    track: int
+    device: str
+
+
+@app.post("/api/bridge/insert")
+def bridge_insert(request: Insert):
+    return {"id": bridge.probe(request.track, request.device)}
+
+
 @app.get("/api/bridge/device")
 def bridge_device():
     path = ROOT / "artifacts" / "RDX Bridge.amxd"

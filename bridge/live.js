@@ -7,7 +7,7 @@ outlets = 2;
 // in the background it does not fire at all — and a stale script that looks
 // connected is the hardest kind of failure to see. Bump this whenever the
 // behaviour changes, and the studio will say when the device needs reloading.
-var DEVICE_VERSION = 4;
+var DEVICE_VERSION = 5;
 
 var busy = false;
 var completed = {};
@@ -277,6 +277,46 @@ function command(filename) {
         return track;
     }
     try {
+        // RDX places a native device on a track and reads it back in full. This
+        // is the first native-Ableton capability: no stems, no undo step, just
+        // insert and scan every parameter so a sound recipe can target real
+        // knob names. insert_device is native-only (Live 12.3+); a VST cannot
+        // be placed this way, only driven once present.
+        if (job.kind === 'insert_device') {
+            var before = ids(song.get('tracks'));
+            song.call('create_midi_track', -1);
+            var after = ids(song.get('tracks'));
+            if (after.length !== before.length + 1) throw new Error('Live could not create a MIDI track');
+            var target = api('id ' + after[after.length - 1]);
+            target.set('name', 'RDX ' + job.device);
+            var had = ids(target.get('devices')).length;
+            var tries = [];
+            var placed = false;
+            var forms = [function () { target.call('insert_device', job.device, -1); }, function () { target.call('insert_device', job.device); }];
+            for (var f = 0; f < forms.length && !placed; f++) {
+                try { forms[f](); } catch (e) { tries.push(e.message); continue; }
+                if (ids(target.get('devices')).length > had) placed = true; else tries.push('form ' + (f + 1) + ' added nothing');
+            }
+            var deviceIds = ids(target.get('devices'));
+            var scanned = [];
+            for (var d = 0; d < deviceIds.length; d++) {
+                var dev = api('id ' + deviceIds[d]);
+                var pids = ids(dev.get('parameters'));
+                var params = [];
+                for (var q = 0; q < pids.length; q++) {
+                    var par = api('id ' + pids[q]);
+                    params.push({name: text(par, 'name'), min: number(par, 'min'), max: number(par, 'max'), value: number(par, 'value')});
+                }
+                scanned.push({name: text(dev, 'name'), kind: text(dev, 'class_display_name'), plugin: text(dev, 'class_name') === 'PluginDevice', parameter_count: pids.length, parameters: params});
+            }
+            busy = false;
+            refresh();
+            var probe = {id: job.id, ok: placed, message: placed ? ('Placed ' + job.device + ' on a new MIDI track') : ('Could not place ' + job.device + ': ' + tries.join('; ')), devices: scanned};
+            completed[job.id] = probe;
+            outlet(0, 'result', JSON.stringify(probe));
+            outlet(1, probe.message);
+            return;
+        }
         if (job.kind !== 'append_project') throw new Error('Unsupported transfer');
         if (number(song, 'is_playing')) throw new Error('Stop Live playback before transferring');
         // Read fresh: appending after a remembered end would land on top of

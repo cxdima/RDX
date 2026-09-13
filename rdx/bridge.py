@@ -9,7 +9,7 @@ from .domain import Project, uid
 # The build of bridge/live.js this studio expects. Max does not reliably reload
 # that file, so a device can be connected and running an older script; when
 # these disagree the device needs dragging out of Live and back in.
-DEVICE_VERSION = 4
+DEVICE_VERSION = 5
 
 
 class Bridge:
@@ -51,5 +51,16 @@ class Bridge:
             if self.live.get("has_content") and abs(float(self.live.get("tempo", 0)) - project.tempo) > 0.01:
                 raise ValueError(f"The open Live Set has music at {self.live.get('tempo')} BPM; RDX is at {project.tempo:g}. Match the tempo or use an empty Set before transferring.")
             self.pending = {"id": uid(), "kind": "append_project", "project": project.model_dump(), "stems": stems, "created": time.time()}
+            self.result = None
+            return self.pending["id"]
+
+    def probe(self, track: int, device: str):
+        """Queue a one-shot: place a native device on a track and scan it."""
+        with self.lock:
+            if time.time() - self.last_seen >= 10:
+                raise ValueError("Ableton is not connected")
+            if self.pending:
+                raise ValueError("Wait for the current Ableton command to finish")
+            self.pending = {"id": uid(), "kind": "insert_device", "track": int(track), "device": str(device), "created": time.time()}
             self.result = None
             return self.pending["id"]
