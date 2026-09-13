@@ -7,7 +7,7 @@ outlets = 2;
 // in the background it does not fire at all — and a stale script that looks
 // connected is the hardest kind of failure to see. Bump this whenever the
 // behaviour changes, and the studio will say when the device needs reloading.
-var DEVICE_VERSION = 6;
+var DEVICE_VERSION = 8;
 
 var busy = false;
 var completed = {};
@@ -283,29 +283,45 @@ function command(filename) {
         // knob names. insert_device is native-only (Live 12.3+); a VST cannot
         // be placed this way, only driven once present.
         if (job.kind === 'insert_device') {
-            var before = ids(song.get('tracks'));
-            song.call('create_midi_track', -1);
-            var after = ids(song.get('tracks'));
-            if (after.length !== before.length + 1) throw new Error('Live could not create a MIDI track');
-            var target = api('id ' + after[after.length - 1]);
-            target.set('name', 'RDX ' + job.device);
-            var had = ids(target.get('devices')).length;
-            var tries = [];
-            var placed = false;
-            var forms = [function () { target.call('insert_device', job.device, -1); }, function () { target.call('insert_device', job.device); }];
-            for (var f = 0; f < forms.length && !placed; f++) {
-                try { forms[f](); } catch (e) { tries.push(e.message); continue; }
-                if (ids(target.get('devices')).length > had) placed = true; else tries.push('form ' + (f + 1) + ' added nothing');
+            var target = null, placed = false, tries = [], insertedAt = -1;
+            if (job.track_name) {
+                var tids = ids(song.get('tracks'));
+                for (var i = 0; i < tids.length; i++) { var tk = api('id ' + tids[i]); if (text(tk, 'name') === job.track_name) { target = tk; break; } }
+                if (!target) throw new Error('No track named "' + job.track_name + '"');
+            } else {
+                var before = ids(song.get('tracks'));
+                song.call('create_midi_track', -1);
+                var after = ids(song.get('tracks'));
+                if (after.length !== before.length + 1) throw new Error('Live could not create a MIDI track');
+                target = api('id ' + after[after.length - 1]);
+                target.set('name', job.name || ('RDX ' + job.device));
             }
-            // Apply an optional parameter recipe to the inserted device, and
-            // read each value back as its real display string (str_for_value) so
-            // a normalized 0..1 knob is confirmed in Hz/dB/semitones, not guessed.
+            if (job.device) {
+                var had = ids(target.get('devices')).length;
+                var forms = [function () { target.call('insert_device', job.device, -1); }, function () { target.call('insert_device', job.device); }];
+                for (var f = 0; f < forms.length && !placed; f++) {
+                    try { forms[f](); } catch (e) { tries.push(e.message); continue; }
+                    if (ids(target.get('devices')).length > had) { placed = true; insertedAt = ids(target.get('devices')).length - 1; } else tries.push('form ' + (f + 1) + ' added nothing');
+                }
+                if (!placed) throw new Error('Could not place ' + job.device + ' on ' + text(target, 'name') + ': ' + tries.join('; '));
+            }
+            // Params target the device just inserted; with no insert they tune the
+            // track's first device (its instrument). Read back via str_for_value so
+            // a 0..1 knob is confirmed in real units.
+            var devIds = ids(target.get('devices'));
+            if (!devIds.length) throw new Error(text(target, 'name') + ' has no device to configure');
+            var tgt;
+            if (job.on_device) {
+                var pick = null;
+                for (var d = 0; d < devIds.length; d++) { if (text(api('id ' + devIds[d]), 'name') === job.on_device) { pick = devIds[d]; break; } }
+                if (pick === null) throw new Error('No device "' + job.on_device + '" on ' + text(target, 'name'));
+                tgt = api('id ' + pick);
+            } else {
+                tgt = api('id ' + devIds[insertedAt >= 0 ? insertedAt : 0]);
+            }
             var applied = [], missed = [];
-            if (placed && job.params && job.params.length) {
-                var instIds = ids(target.get('devices'));
-                var inst = api('id ' + instIds[instIds.length - 1]);
-                var pmap = {};
-                var ipids = ids(inst.get('parameters'));
+            if (job.params && job.params.length) {
+                var pmap = {}, ipids = ids(tgt.get('parameters'));
                 for (var i = 0; i < ipids.length; i++) { pmap[text(api('id ' + ipids[i]), 'name')] = ipids[i]; }
                 for (var j = 0; j < job.params.length; j++) {
                     var pv = job.params[j];
@@ -317,21 +333,16 @@ function command(filename) {
                     applied.push(pv.name + ' = ' + disp);
                 }
             }
-            var deviceIds = ids(target.get('devices'));
             var scanned = [];
-            for (var d = 0; d < deviceIds.length; d++) {
-                var dev = api('id ' + deviceIds[d]);
+            for (var d = 0; d < devIds.length; d++) {
+                var dev = api('id ' + devIds[d]);
                 var pids = ids(dev.get('parameters'));
                 var params = [];
-                for (var q = 0; q < pids.length; q++) {
-                    var par = api('id ' + pids[q]);
-                    params.push({name: text(par, 'name'), min: number(par, 'min'), max: number(par, 'max'), value: number(par, 'value')});
-                }
+                for (var q = 0; q < pids.length; q++) { var par = api('id ' + pids[q]); params.push({name: text(par, 'name'), min: number(par, 'min'), max: number(par, 'max'), value: number(par, 'value')}); }
                 scanned.push({name: text(dev, 'name'), kind: text(dev, 'class_display_name'), plugin: text(dev, 'class_name') === 'PluginDevice', parameter_count: pids.length, parameters: params});
             }
-            busy = false;
-            refresh();
-            var probe = {id: job.id, ok: placed, message: placed ? ('Placed ' + job.device + ' and set ' + applied.length + ' params' + (missed.length ? ' (' + missed.length + ' missing)' : '')) : ('Could not place ' + job.device + ': ' + tries.join('; ')), applied: applied, missed: missed, devices: scanned};
+            busy = false; refresh();
+            var probe = {id: job.id, ok: true, message: (job.device ? ('Placed ' + job.device) : ('Configured ' + text(tgt, 'name'))) + ' on ' + text(target, 'name') + ', set ' + applied.length + ' params' + (missed.length ? ' (' + missed.length + ' missing)' : ''), applied: applied, missed: missed, devices: scanned};
             completed[job.id] = probe;
             outlet(0, 'result', JSON.stringify(probe));
             outlet(1, probe.message);

@@ -428,14 +428,17 @@ def send_to_ableton(project_id: str, request: Transfer):
 
 
 class Insert(Model):
-    track: int
-    device: str
+    track: int = 0
+    device: str = ""
     params: list[dict] = []
+    track_name: str = ""
+    name: str = ""
+    on_device: str = ""
 
 
 @app.post("/api/bridge/insert")
 def bridge_insert(request: Insert):
-    return {"id": bridge.probe(request.track, request.device, request.params)}
+    return {"id": bridge.probe(request.track, request.device, request.params, request.track_name, request.name, request.on_device)}
 
 
 @app.get("/api/bridge/device")
