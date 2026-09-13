@@ -436,6 +436,19 @@ class Insert(Model):
     on_device: str = ""
 
 
+class Clip(Model):
+    track_name: str
+    notes: list[dict]
+    start: float = 0.0
+    length: float = 16.0
+    tempo: float | None = None
+
+
+@app.post("/api/bridge/clip")
+def bridge_clip(request: Clip):
+    return {"id": bridge.add_clip(request.track_name, request.notes, request.start, request.length, request.tempo)}
+
+
 @app.post("/api/bridge/insert")
 def bridge_insert(request: Insert):
     return {"id": bridge.probe(request.track, request.device, request.params, request.track_name, request.name, request.on_device)}

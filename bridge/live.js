@@ -7,7 +7,7 @@ outlets = 2;
 // in the background it does not fire at all — and a stale script that looks
 // connected is the hardest kind of failure to see. Bump this whenever the
 // behaviour changes, and the studio will say when the device needs reloading.
-var DEVICE_VERSION = 8;
+var DEVICE_VERSION = 9;
 
 var busy = false;
 var completed = {};
@@ -347,6 +347,27 @@ function command(filename) {
             outlet(0, 'result', JSON.stringify(probe));
             outlet(1, probe.message);
             return;
+        }
+        if (job.kind === 'add_clip') {
+            // Write a MIDI clip of notes onto a named track — this is what lets
+            // RDX's generated patterns play through the native instruments.
+            var tids = ids(song.get('tracks'));
+            var trk = null;
+            for (var i = 0; i < tids.length; i++) { var tk = api('id ' + tids[i]); if (text(tk, 'name') === job.track_name) { trk = tk; break; } }
+            if (!trk) throw new Error('No track named "' + job.track_name + '"');
+            if (job.tempo) song.set('tempo', job.tempo);
+            var length = job.length || 16;
+            var before = ids(trk.get('arrangement_clips'));
+            trk.call('create_midi_clip', job.start || 0, length);
+            var after = ids(trk.get('arrangement_clips'));
+            var made = after.filter(function (id) { return before.indexOf(id) === -1; });
+            if (made.length !== 1) throw new Error('MIDI clip creation did not complete on ' + job.track_name);
+            var clip = api('id ' + made[0]);
+            clip.set('name', job.track_name);
+            var written = addNotes(clip, job.notes || [], length);
+            busy = false; refresh();
+            var r = {id: job.id, ok: written.ok, message: written.ok ? ('Wrote ' + written.count + ' notes to ' + job.track_name) : ('Notes failed on ' + job.track_name + ': ' + written.detail)};
+            completed[job.id] = r; outlet(0, 'result', JSON.stringify(r)); outlet(1, r.message); return;
         }
         if (job.kind !== 'append_project') throw new Error('Unsupported transfer');
         if (number(song, 'is_playing')) throw new Error('Stop Live playback before transferring');

@@ -9,7 +9,7 @@ from .domain import Project, uid
 # The build of bridge/live.js this studio expects. Max does not reliably reload
 # that file, so a device can be connected and running an older script; when
 # these disagree the device needs dragging out of Live and back in.
-DEVICE_VERSION = 8
+DEVICE_VERSION = 9
 
 
 class Bridge:
@@ -53,6 +53,20 @@ class Bridge:
             self.pending = {"id": uid(), "kind": "append_project", "project": project.model_dump(), "stems": stems, "created": time.time()}
             self.result = None
             return self.pending["id"]
+
+    def add_clip(self, track_name: str, notes: list, start: float = 0.0, length: float = 16.0, tempo: float | None = None):
+        """Queue a MIDI clip of notes onto a named track so it plays."""
+        with self.lock:
+            if time.time() - self.last_seen >= 10:
+                raise ValueError("Ableton is not connected")
+            if self.pending:
+                raise ValueError("Wait for the current Ableton command to finish")
+            job = {"id": uid(), "kind": "add_clip", "track_name": str(track_name), "notes": notes, "start": float(start), "length": float(length), "created": time.time()}
+            if tempo:
+                job["tempo"] = float(tempo)
+            self.pending = job
+            self.result = None
+            return job["id"]
 
     def probe(self, track: int, device: str, params: list | None = None, track_name: str = "", name: str = "", on_device: str = ""):
         """Queue a one-shot: place a native device, apply a parameter recipe, scan it."""

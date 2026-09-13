@@ -63,8 +63,7 @@ max.addHandler("state", async (raw) => {
     const response = await request("poll", JSON.parse(raw));
     if (response.command) {
       const job = response.command;
-      if (!/^[a-f0-9]{12}$/.test(job.id) || (job.kind !== "append_project" && job.kind !== "insert_device"))
-        throw new Error("Unsupported transfer");
+      if (!/^[a-f0-9]{12}$/.test(job.id)) throw new Error("Bad command id");
       const directory = path.join(root, "data/bridge-commands");
       await fs.mkdir(directory, { recursive: true });
       const filename = path.join(directory, `${job.id}.json`);
